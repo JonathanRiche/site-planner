@@ -1,11 +1,11 @@
 # dependencies (bun install)
 node_modules
-
+.dev.vars
 # output
 out
 dist
 *.tgz
-
+.wrangler
 # code coverage
 coverage
 *.lcov

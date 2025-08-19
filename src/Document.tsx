@@ -32,7 +32,7 @@ export const Document: React.FC<{ children: React.ReactNode }> = ({
 			<meta name="msapplication-TileColor" content="#da532c" />
 			<meta name="theme-color" content="#ffffff" />
 
-			<title>Lytx</title>
+			<title>Site Planner - LYTX Analytics Optimization</title>
 			<link rel="modulepreload" href="/src/client.tsx" />
 		</head>
 		<body>
