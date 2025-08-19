@@ -3,7 +3,8 @@ import { route, render } from "rwsdk/router";
 import { Document } from "./Document";
 import { HomePage } from "./components/HomePage";
 import analyzeHandler from "./api/analyze";
-
+export type AppContext = {
+};
 export default defineApp([
 	async ({ ctx }: any) => {
 	},

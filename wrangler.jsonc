@@ -19,6 +19,12 @@
 			"preview_id": "44619d2da4504645ad35e5f90e20b0b6"
 		}
 	],
+	"observability": {
+		"enabled": true,
+		"logs": {
+			"enabled": true
+		}
+	},
 	"vars": {
 		"NODE_ENV": "development"
 	}

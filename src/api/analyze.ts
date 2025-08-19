@@ -1,6 +1,8 @@
 import { SiteAnalysisService } from '../lib/analysis-service';
 
-export default async function analyzeHandler({ request }: any) {
+import type { AppContext } from "@/worker";
+import type { RequestInfo } from "rwsdk/worker";
+export default async function analyzeHandler({ request }: RequestInfo<any, AppContext>) {
   // Only handle POST requests for this endpoint
   if (request.method !== 'POST') {
     return new Response(

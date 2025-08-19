@@ -64,15 +64,21 @@ function isBlockedContent(html: string, title: string): { isBlocked: boolean; re
 async function fetchPageFallback(url: string, retryCount = 0): Promise<{ html: string; title: string; url: string }> {
   const maxRetries = 3;
   const userAgent = getRandomUserAgent();
+  const fallbackId = Math.random().toString(36).substring(7);
   
-  console.log(`Using fallback fetch method for: ${url} (attempt ${retryCount + 1})`);
+  console.log(`🔄 [${fallbackId}] Using fallback fetch method for: ${url} (attempt ${retryCount + 1}/${maxRetries + 1})`);
+  console.log(`🎭 [${fallbackId}] User agent: ${userAgent.substring(0, 50)}...`);
   
   try {
     // Add delay between retries to avoid rate limiting
     if (retryCount > 0) {
       const delay = Math.min(1000 * Math.pow(2, retryCount), 10000); // Exponential backoff up to 10s
+      console.log(`⏱️ [${fallbackId}] Waiting ${delay}ms before retry...`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
+    
+    console.log(`🌐 [${fallbackId}] Making HTTP request...`);
+    const fetchStartTime = Date.now();
     
     const response = await fetch(url, {
       headers: {
@@ -90,11 +96,19 @@ async function fetchPageFallback(url: string, retryCount = 0): Promise<{ html: s
       },
     });
 
+    console.log(`📡 [${fallbackId}] Response received in ${Date.now() - fetchStartTime}ms:`, {
+      status: response.status,
+      statusText: response.statusText,
+      contentType: response.headers.get('content-type'),
+      contentLength: response.headers.get('content-length')
+    });
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
     const html = await response.text();
+    console.log(`📄 [${fallbackId}] HTML content received: ${html.length} characters`);
     
     // Extract title
     const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
@@ -156,30 +170,51 @@ export class CloudflareBrowserService {
 
     const cacheKey = `page:${url}:${JSON.stringify(options)}`;
     const startTime = Date.now();
+    const requestId = Math.random().toString(36).substring(7);
+
+    console.log(`[${requestId}] 🚀 Starting page render for: ${url}`, {
+      viewport,
+      takeScreenshot,
+      waitFor,
+      useCache,
+      timestamp: new Date().toISOString()
+    });
 
     // Check cache first if enabled
     if (useCache && env.SITE_ANALYSIS_CACHE) {
+      console.log(`[${requestId}] 🔍 Checking cache for: ${url}`);
       try {
         const cached = await env.SITE_ANALYSIS_CACHE.get(cacheKey);
         if (cached) {
-          console.log('Cache hit for:', url);
+          console.log(`[${requestId}] ✅ Cache hit for: ${url} (${Date.now() - startTime}ms)`);
           return JSON.parse(cached);
+        } else {
+          console.log(`[${requestId}] ❌ Cache miss for: ${url}`);
         }
       } catch (error) {
-        console.warn('Cache read error:', error);
+        console.warn(`[${requestId}] ⚠️ Cache read error for ${url}:`, error);
       }
+    } else {
+      console.log(`[${requestId}] 🚫 Cache disabled or unavailable`);
     }
 
-    console.log('Launching browser for:', url);
-    
     try {
       // Check if browser binding is available
+      console.log(`[${requestId}] 🔍 Checking browser binding availability...`);
+      console.log(`[${requestId}] 📊 Environment info:`, {
+        hasMYBROWSER: !!env.MYBROWSER,
+        hasCACHE: !!env.SITE_ANALYSIS_CACHE,
+        envKeys: Object.keys(env || {}).length
+      });
+      
       if (!env.MYBROWSER) {
-        console.warn('MYBROWSER binding not available, using fallback fetch method');
+        console.warn(`[${requestId}] ⚠️ MYBROWSER binding not available, using fallback fetch method`);
         
         // Use simple fetch fallback for development
         const fallbackResult = await fetchPageFallback(url);
         const loadTime = Date.now() - startTime;
+        
+        console.log(`[${requestId}] ✅ Fallback fetch completed in ${loadTime}ms`);
         
         return {
           html: fallbackResult.html,
@@ -194,18 +229,24 @@ export class CloudflareBrowserService {
       }
       
       // Launch browser with Cloudflare's Puppeteer
+      console.log(`[${requestId}] 🌐 Launching Puppeteer browser...`);
+      const browserStartTime = Date.now();
       const browser = await puppeteer.launch(env.MYBROWSER);
+      console.log(`[${requestId}] ✅ Browser launched successfully in ${Date.now() - browserStartTime}ms`);
+      console.log(`[${requestId}] 📄 Creating new browser page...`);
       const page = await browser.newPage();
 
       // Set viewport
+      console.log(`[${requestId}] 📐 Setting viewport to ${viewport.width}x${viewport.height}`);
       await page.setViewport(viewport);
 
       // Set randomized user agent and headers to appear more human-like
       const userAgent = getRandomUserAgent();
+      console.log(`[${requestId}] 🎭 Setting user agent: ${userAgent.substring(0, 50)}...`);
       await page.setUserAgent(userAgent);
       
       // Set additional headers to mimic real browser behavior
-      await page.setExtraHTTPHeaders({
+      const headers = {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
         'Accept-Encoding': 'gzip, deflate, br',
@@ -215,44 +256,65 @@ export class CloudflareBrowserService {
         'Sec-Fetch-Dest': 'document',
         'Sec-Fetch-Mode': 'navigate',
         'Sec-Fetch-Site': 'none',
-      });
+      };
+      console.log(`[${requestId}] 🔧 Setting ${Object.keys(headers).length} HTTP headers`);
+      await page.setExtraHTTPHeaders(headers);
 
       // Navigate to the page with retry logic
-      console.log('Navigating to:', url);
+      console.log(`[${requestId}] 🧭 Starting navigation to: ${url}`);
       let html: string = '';
       let title: string = '';
       let retryCount = 0;
       const maxRetries = 2;
       
       while (retryCount <= maxRetries) {
+        const attemptStartTime = Date.now();
+        console.log(`[${requestId}] 🎯 Navigation attempt ${retryCount + 1}/${maxRetries + 1}`);
+        
         try {
+          console.log(`[${requestId}] ⏳ Calling page.goto() with 30s timeout...`);
           await page.goto(url, { 
             waitUntil: 'domcontentloaded',
             timeout: 30000 
           });
+          console.log(`[${requestId}] ✅ Navigation completed in ${Date.now() - attemptStartTime}ms`);
 
           // Wait for additional content to load
           if (waitFor > 0) {
+            console.log(`[${requestId}] ⌛ Waiting ${waitFor}ms for dynamic content...`);
             await new Promise(resolve => setTimeout(resolve, waitFor));
           }
 
           // Extract page content
+          console.log(`[${requestId}] 📖 Extracting page content and title...`);
+          const contentStartTime = Date.now();
           [html, title] = await Promise.all([
             page.content(),
             page.title().catch(() => 'No title found')
           ]);
+          console.log(`[${requestId}] ✅ Content extracted in ${Date.now() - contentStartTime}ms`, {
+            htmlLength: html.length,
+            title: title.substring(0, 100),
+          });
           
           // Check if we got blocked content
+          console.log(`[${requestId}] 🔍 Checking for bot detection/blocking...`);
           const blockCheck = isBlockedContent(html, title);
           if (blockCheck.isBlocked) {
-            console.warn(`Browser rendering blocked: ${blockCheck.reason}`);
+            console.warn(`[${requestId}] 🚫 Browser rendering blocked: ${blockCheck.reason}`, {
+              titleSnippet: title.substring(0, 100),
+              htmlSnippet: html.substring(0, 200)
+            });
             
             if (retryCount < maxRetries) {
-              console.log('Waiting before retry...');
-              await new Promise(resolve => setTimeout(resolve, 5000 + Math.random() * 5000)); // 5-10s random delay
+              const retryDelay = 5000 + Math.random() * 5000; // 5-10s random delay
+              console.log(`[${requestId}] 🔄 Waiting ${Math.round(retryDelay)}ms before retry...`);
+              await new Promise(resolve => setTimeout(resolve, retryDelay));
               
               // Try with a different user agent
-              await page.setUserAgent(getRandomUserAgent());
+              const newUserAgent = getRandomUserAgent();
+              console.log(`[${requestId}] 🎭 Switching to new user agent: ${newUserAgent.substring(0, 50)}...`);
+              await page.setUserAgent(newUserAgent);
               retryCount++;
               continue;
             } else {
@@ -261,14 +323,24 @@ export class CloudflareBrowserService {
           }
           
           // Success - break out of retry loop
+          console.log(`[${requestId}] 🎉 Successfully extracted content (${html.length} chars)`);
           break;
           
         } catch (error) {
+          console.error(`[${requestId}] ❌ Navigation attempt ${retryCount + 1} failed after ${Date.now() - attemptStartTime}ms:`, {
+            error: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+            url,
+            retryCount
+          });
+          
           if (retryCount < maxRetries) {
-            console.warn(`Navigation failed (attempt ${retryCount + 1}), retrying...`, error);
+            const retryDelay = 2000;
+            console.log(`[${requestId}] ⏱️ Waiting ${retryDelay}ms before retry...`);
             retryCount++;
-            await new Promise(resolve => setTimeout(resolve, 2000)); // 2s delay before retry
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
           } else {
+            console.error(`[${requestId}] 💥 All navigation attempts failed for: ${url}`);
             throw error;
           }
         }
@@ -276,14 +348,20 @@ export class CloudflareBrowserService {
 
       let screenshot: Buffer | undefined;
       if (takeScreenshot) {
+        console.log(`[${requestId}] 📸 Taking screenshot...`);
+        const screenshotStartTime = Date.now();
         screenshot = await page.screenshot({
           type: 'jpeg',
           quality: 85,
           fullPage: false, // Just viewport for performance
         }) as Buffer;
+        console.log(`[${requestId}] ✅ Screenshot captured in ${Date.now() - screenshotStartTime}ms (${screenshot.length} bytes)`);
       }
 
+      console.log(`[${requestId}] 🔒 Closing browser...`);
+      const closeStartTime = Date.now();
       await browser.close();
+      console.log(`[${requestId}] ✅ Browser closed in ${Date.now() - closeStartTime}ms`);
 
       const loadTime = Date.now() - startTime;
       const result: PageContent = {
@@ -298,9 +376,18 @@ export class CloudflareBrowserService {
         },
       };
 
+      console.log(`[${requestId}] 📊 Render summary:`, {
+        totalTime: `${loadTime}ms`,
+        htmlSize: `${html.length} chars`,
+        hasScreenshot: !!screenshot,
+        screenshotSize: screenshot ? `${screenshot.length} bytes` : 'N/A'
+      });
+
       // Cache the result if enabled
       if (useCache && env.SITE_ANALYSIS_CACHE) {
+        console.log(`[${requestId}] 💾 Caching result...`);
         try {
+          const cacheStartTime = Date.now();
           await env.SITE_ANALYSIS_CACHE.put(
             cacheKey,
             JSON.stringify(result),
@@ -308,15 +395,23 @@ export class CloudflareBrowserService {
               expirationTtl: 60 * 60 * 24, // 24 hours
             }
           );
-          console.log('Cached result for:', url);
+          console.log(`[${requestId}] ✅ Result cached in ${Date.now() - cacheStartTime}ms for: ${url}`);
         } catch (error) {
-          console.warn('Cache write error:', error);
+          console.warn(`[${requestId}] ⚠️ Cache write error:`, error);
         }
       }
 
+      console.log(`[${requestId}] 🏁 Page render completed successfully in ${loadTime}ms`);
       return result;
     } catch (error) {
-      console.error('Browser rendering error for', url, ':', error);
+      const totalTime = Date.now() - startTime;
+      console.error(`[${requestId}] 💥 Browser rendering failed after ${totalTime}ms for ${url}:`, {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack?.substring(0, 500) : undefined,
+        timestamp: new Date().toISOString(),
+        url,
+        options
+      });
       throw new Error(`Failed to render page: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }

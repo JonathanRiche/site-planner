@@ -15,9 +15,17 @@ export class SiteAnalysisService {
   }
 
   async analyzeSite(url: string): Promise<SiteAnalysisResult> {
+    const analysisId = crypto.randomUUID();
+    const startTime = Date.now();
+    
+    console.log(`🔍 [${analysisId}] Starting site analysis for: ${url}`, {
+      timestamp: new Date().toISOString(),
+      url
+    });
+    
     try {
       // Step 1: Fetch the webpage HTML using Cloudflare Browser Rendering
-      console.log(`Fetching HTML for ${url}...`);
+      console.log(`🌐 [${analysisId}] Step 1: Fetching HTML content...`);
       
       let pageContent;
       try {
@@ -28,21 +36,29 @@ export class SiteAnalysisService {
       } catch (error) {
         // If we get blocked content error, clear cache and retry once without cache
         if (error instanceof Error && error.message.includes('blocked')) {
-          console.warn('Got blocked content, clearing cache and retrying...');
+          console.warn(`🚫 [${analysisId}] Got blocked content, clearing cache and retrying...`);
           await this.browserService.clearCache(url, { takeScreenshot: false, useCache: true });
           
           // Retry without cache
+          console.log(`🔄 [${analysisId}] Retrying without cache...`);
           pageContent = await this.browserService.renderPage(url, {
             takeScreenshot: false,
             useCache: false,
           });
         } else {
+          console.error(`💥 [${analysisId}] Browser service error:`, error);
           throw error;
         }
       }
+      
+      console.log(`✅ [${analysisId}] HTML content fetched successfully`, {
+        htmlLength: pageContent.html.length,
+        title: pageContent.title,
+        loadTime: pageContent.metadata.loadTime
+      });
 
       // Step 2: Analyze page structure using AI with structured output
-      console.log('Analyzing page structure with AI...');
+      console.log(`🤖 [${analysisId}] Step 2: Analyzing page structure with AI...`);
       const pageAnalysisResult = await generateText({
         model: openai('gpt-4o-mini'),
         messages: [
@@ -82,16 +98,31 @@ ${pageContent.html.substring(0, 8000)} ${pageContent.html.length > 8000 ? '... (
       });
 
       // Parse the JSON response
+      console.log(`📊 [${analysisId}] Parsing AI analysis response...`, {
+        responseLength: pageAnalysisResult.text.length,
+        preview: pageAnalysisResult.text.substring(0, 200)
+      });
+      
       let pageAnalysis: PageAnalysis;
       try {
         pageAnalysis = JSON.parse(pageAnalysisResult.text);
+        console.log(`✅ [${analysisId}] Page analysis parsed successfully:`, {
+          title: pageAnalysis.title,
+          headingsCount: pageAnalysis.headings.length,
+          framework: pageAnalysis.technicalStack.framework,
+          cms: pageAnalysis.technicalStack.cms,
+          analyticsCount: pageAnalysis.technicalStack.analytics.length
+        });
       } catch (parseError) {
-        console.error('Failed to parse page analysis JSON:', parseError);
+        console.error(`💥 [${analysisId}] Failed to parse page analysis JSON:`, {
+          error: parseError,
+          rawResponse: pageAnalysisResult.text.substring(0, 500)
+        });
         throw new Error('AI returned invalid JSON for page analysis');
       }
 
       // Step 3: Generate LYTX recommendations
-      console.log('Generating LYTX recommendations...');
+      console.log(`🏷️ [${analysisId}] Step 3: Generating LYTX recommendations...`);
       const recommendationsResult = await generateText({
         model: openai('gpt-4o-mini'),
         messages: [
@@ -130,15 +161,30 @@ Consider the technical stack, content type, and existing analytics when making r
       });
 
       // Parse the LYTX recommendations
+      console.log(`📋 [${analysisId}] Parsing LYTX recommendations...`, {
+        responseLength: recommendationsResult.text.length
+      });
+      
       let lytxRecommendations: LYTXRecommendation;
       try {
         lytxRecommendations = JSON.parse(recommendationsResult.text);
+        console.log(`✅ [${analysisId}] LYTX recommendations parsed successfully:`, {
+          tagPlacementsCount: lytxRecommendations.tagPlacements.length,
+          trackingEventsCount: lytxRecommendations.trackingEvents.length,
+          optimizationsCount: lytxRecommendations.optimizations.length
+        });
       } catch (parseError) {
-        console.error('Failed to parse LYTX recommendations JSON:', parseError);
+        console.error(`💥 [${analysisId}] Failed to parse LYTX recommendations JSON:`, {
+          error: parseError,
+          rawResponse: recommendationsResult.text.substring(0, 500)
+        });
         throw new Error('AI returned invalid JSON for LYTX recommendations');
       }
 
       // Step 4: Combine results
+      console.log(`📦 [${analysisId}] Step 4: Combining results...`);
+      const totalTime = Date.now() - startTime;
+      
       const analysisResult: SiteAnalysisResult = {
         pageAnalysis: {
           ...pageAnalysis,
@@ -151,13 +197,28 @@ Consider the technical stack, content type, and existing analytics when making r
           })
         },
         lytxRecommendations,
-        analysisId: crypto.randomUUID(),
+        analysisId,
         timestamp: new Date().toISOString(),
       };
 
+      console.log(`🏁 [${analysisId}] Site analysis completed successfully in ${totalTime}ms`, {
+        url,
+        totalTime: `${totalTime}ms`,
+        htmlSize: pageContent.html.length,
+        pageTitle: pageAnalysis.title,
+        recommendationsGenerated: lytxRecommendations.tagPlacements.length + lytxRecommendations.trackingEvents.length + lytxRecommendations.optimizations.length
+      });
+
       return analysisResult;
     } catch (error) {
-      console.error('Site analysis failed:', error);
+      const totalTime = Date.now() - startTime;
+      console.error(`💥 [${analysisId}] Site analysis failed after ${totalTime}ms:`, {
+        url,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack?.substring(0, 500) : undefined,
+        totalTime: `${totalTime}ms`,
+        timestamp: new Date().toISOString()
+      });
       throw error;
     }
   }
