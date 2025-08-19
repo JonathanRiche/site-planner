@@ -1,4 +1,4 @@
-# nutriontracker
+# Site Planner
 
 To install dependencies:
 
