@@ -7,6 +7,108 @@ const openai = createOpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Helper utilities to extract valid JSON from LLM responses that may include
+// markdown fences, pre/post text, or additional formatting.
+function extractJsonFromResponse(text: string): string {
+  if (!text) return text;
+
+  // Normalize and strip BOM/zero-width spaces
+  let working = text
+    .replace(/^\uFEFF/, '')
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, '')
+    .trim();
+
+  // 1) Prefer fenced code blocks (json/js/javascript)
+  const fenceMatch = working.match(/```(?:json|js|javascript)?\s*([\s\S]*?)\s*```/i);
+  if (fenceMatch && fenceMatch[1]) {
+    working = fenceMatch[1].trim();
+  }
+
+  // Remove accidental leading language hint like "json" at the top
+  if (/^json\s*[\r\n]/i.test(working)) {
+    working = working.replace(/^json\s*[\r\n]+/i, '');
+  }
+
+  // If it already starts with a JSON container, try as-is
+  const startsLikeJson = /^(\{|\[)/.test(working);
+  if (startsLikeJson) {
+    return working;
+  }
+
+  // 2) Fallback: find the first balanced JSON object/array segment in the text
+  const balanced = extractBalancedJsonSegment(working);
+  if (balanced) {
+    return balanced.trim();
+  }
+
+  // 3) Last resort: try on original text in case fences were incomplete
+  const balancedFromOriginal = extractBalancedJsonSegment(text);
+  if (balancedFromOriginal) {
+    return balancedFromOriginal.trim();
+  }
+
+  // If nothing better found, return trimmed input; caller will attempt JSON.parse and handle errors
+  return working;
+}
+
+// Scans input for the first balanced top-level JSON object or array, ignoring braces inside strings
+function extractBalancedJsonSegment(source: string): string | null {
+  if (!source) return null;
+
+  const startIndex = findFirstJsonContainerIndex(source);
+  if (startIndex === -1) return null;
+
+  const openingChar = source[startIndex];
+  const closingChar = openingChar === '{' ? '}' : ']';
+
+  let depth = 0;
+  let inString = false;
+  let stringQuote: '"' | "'" | null = null;
+  let isEscaped = false;
+
+  for (let i = startIndex; i < source.length; i++) {
+    const char = source[i];
+
+    if (inString) {
+      if (isEscaped) {
+        isEscaped = false;
+      } else if (char === '\\') {
+        isEscaped = true;
+      } else if (char === stringQuote) {
+        inString = false;
+        stringQuote = null;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === '\'') {
+      inString = true;
+      stringQuote = char as '"' | "'";
+      continue;
+    }
+
+    if (char === openingChar) {
+      depth += 1;
+    } else if (char === closingChar) {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(startIndex, i + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
+function findFirstJsonContainerIndex(text: string): number {
+  const objIndex = text.indexOf('{');
+  const arrIndex = text.indexOf('[');
+  if (objIndex === -1 && arrIndex === -1) return -1;
+  if (objIndex === -1) return arrIndex;
+  if (arrIndex === -1) return objIndex;
+  return Math.min(objIndex, arrIndex);
+}
+
 export class SiteAnalysisService {
   private browserService: CloudflareBrowserService;
 
@@ -85,7 +187,7 @@ export class SiteAnalysisService {
   }
 }
 
-Only return valid JSON, no other text.`,
+Only return valid JSON, no other text or markdown formatting.`,
           },
           {
             role: 'user',
@@ -105,7 +207,16 @@ ${pageContent.html.substring(0, 8000)} ${pageContent.html.length > 8000 ? '... (
       
       let pageAnalysis: PageAnalysis;
       try {
-        pageAnalysis = JSON.parse(pageAnalysisResult.text);
+        // Extract JSON from response (handles markdown code blocks)
+        const cleanJson = extractJsonFromResponse(pageAnalysisResult.text);
+        console.log(`🧹 [${analysisId}] Cleaned JSON:`, {
+          originalLength: pageAnalysisResult.text.length,
+          cleanedLength: cleanJson.length,
+          hasMarkdown: pageAnalysisResult.text.includes('```'),
+          preview: cleanJson.substring(0, 200)
+        });
+        
+        pageAnalysis = JSON.parse(cleanJson);
         console.log(`✅ [${analysisId}] Page analysis parsed successfully:`, {
           title: pageAnalysis.title,
           headingsCount: pageAnalysis.headings.length,
@@ -116,7 +227,8 @@ ${pageContent.html.substring(0, 8000)} ${pageContent.html.length > 8000 ? '... (
       } catch (parseError) {
         console.error(`💥 [${analysisId}] Failed to parse page analysis JSON:`, {
           error: parseError,
-          rawResponse: pageAnalysisResult.text.substring(0, 500)
+          rawResponse: pageAnalysisResult.text.substring(0, 500),
+          cleanedJson: extractJsonFromResponse(pageAnalysisResult.text).substring(0, 500)
         });
         throw new Error('AI returned invalid JSON for page analysis');
       }
@@ -148,7 +260,7 @@ ${pageContent.html.substring(0, 8000)} ${pageContent.html.length > 8000 ? '... (
   }]
 }
 
-Focus on LYTX-specific implementation. Only return valid JSON, no other text.`,
+Focus on LYTX-specific implementation. Only return valid JSON, no other text or markdown formatting.`,
           },
           {
             role: 'user',
@@ -167,7 +279,9 @@ Consider the technical stack, content type, and existing analytics when making r
       
       let lytxRecommendations: LYTXRecommendation;
       try {
-        lytxRecommendations = JSON.parse(recommendationsResult.text);
+        // Extract JSON from response (handles markdown code blocks)
+        const cleanJson = extractJsonFromResponse(recommendationsResult.text);
+        lytxRecommendations = JSON.parse(cleanJson);
         console.log(`✅ [${analysisId}] LYTX recommendations parsed successfully:`, {
           tagPlacementsCount: lytxRecommendations.tagPlacements.length,
           trackingEventsCount: lytxRecommendations.trackingEvents.length,
@@ -176,7 +290,8 @@ Consider the technical stack, content type, and existing analytics when making r
       } catch (parseError) {
         console.error(`💥 [${analysisId}] Failed to parse LYTX recommendations JSON:`, {
           error: parseError,
-          rawResponse: recommendationsResult.text.substring(0, 500)
+          rawResponse: recommendationsResult.text.substring(0, 500),
+          cleanedJson: extractJsonFromResponse(recommendationsResult.text).substring(0, 500)
         });
         throw new Error('AI returned invalid JSON for LYTX recommendations');
       }
