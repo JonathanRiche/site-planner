@@ -126,6 +126,14 @@ export function HomePage() {
               <div className="ml-3">
                 <h3 className="text-sm font-medium text-red-800">Analysis Error</h3>
                 <div className="mt-2 text-sm text-red-700">{error}</div>
+                {error.includes('blocked') && (
+                  <div className="mt-3 text-sm text-red-600">
+                    <strong>Bot Protection Detected:</strong> This website is using security measures that may block automated analysis. 
+                    This is common with sites protected by Cloudflare, Imperva, or other security services.
+                    <br />
+                    <em>Tip: Try analyzing a different page on the same domain or wait a few minutes before retrying.</em>
+                  </div>
+                )}
               </div>
             </div>
           </div>

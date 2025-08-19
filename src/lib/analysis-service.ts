@@ -18,10 +18,28 @@ export class SiteAnalysisService {
     try {
       // Step 1: Fetch the webpage HTML using Cloudflare Browser Rendering
       console.log(`Fetching HTML for ${url}...`);
-      const pageContent = await this.browserService.renderPage(url, {
-        takeScreenshot: false,
-        useCache: true,
-      });
+      
+      let pageContent;
+      try {
+        pageContent = await this.browserService.renderPage(url, {
+          takeScreenshot: false,
+          useCache: true,
+        });
+      } catch (error) {
+        // If we get blocked content error, clear cache and retry once without cache
+        if (error instanceof Error && error.message.includes('blocked')) {
+          console.warn('Got blocked content, clearing cache and retrying...');
+          await this.browserService.clearCache(url, { takeScreenshot: false, useCache: true });
+          
+          // Retry without cache
+          pageContent = await this.browserService.renderPage(url, {
+            takeScreenshot: false,
+            useCache: false,
+          });
+        } else {
+          throw error;
+        }
+      }
 
       // Step 2: Analyze page structure using AI with structured output
       console.log('Analyzing page structure with AI...');
@@ -122,7 +140,16 @@ Consider the technical stack, content type, and existing analytics when making r
 
       // Step 4: Combine results
       const analysisResult: SiteAnalysisResult = {
-        pageAnalysis,
+        pageAnalysis: {
+          ...pageAnalysis,
+          // Add metadata about potential bot protection
+          ...(pageAnalysis.title.toLowerCase().includes('attention required') && {
+            technicalStack: {
+              ...pageAnalysis.technicalStack,
+              analytics: [...pageAnalysis.technicalStack.analytics, 'Bot Protection Detected']
+            }
+          })
+        },
         lytxRecommendations,
         analysisId: crypto.randomUUID(),
         timestamp: new Date().toISOString(),
