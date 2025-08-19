@@ -1,0 +1,31 @@
+{
+  "name": "redwood-starter",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite dev",
+    "dev:init": "rw-scripts dev-init",
+    "build": "vite build",
+    "clean": "bun run clean:vite",
+    "clean:vite": "rm -rf ./node_modules/.vite",
+    "cf-types": "bunx wrangler types",
+    "release": "rw-scripts ensure-deploy-env && bun run clean && RWSDK_DEPLOY=1 bun run build && wrangler deploy",
+    "prepare": "vibe-rules install unified"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.8",
+    "@types/bun": "latest",
+    "@types/react": "^19.1.7",
+    "@types/react-dom": "^19.1.6",
+    "vibe-rules": "^0.3.85",
+    "wrangler": "^4.31.0"
+  },
+  "dependencies": {
+    "rwsdk": "^0.1.36",
+    "vite": "^6.3.5"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

@@ -1,0 +1,12 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"compatibility_date": "2025-05-05",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"main": "src/worker.tsx",
+	"name": "site_planner",
+	"assets": {
+		"binding": "ASSETS"
+	}
+}
