@@ -109,6 +109,13 @@ function findFirstJsonContainerIndex(text: string): number {
   return Math.min(objIndex, arrIndex);
 }
 
+// Detect presence of LYTX script in raw HTML
+function hasLytxScriptTag(html: string): boolean {
+  if (!html) return false;
+  return /<script[^>]+src=["'][^"']*(?:lytx\.io\/lytx\.js|analytics\.lytx\.io)[^"']*["'][^>]*>/i.test(html)
+    || /window\.(?:lytx|lytxApi)\b/i.test(html);
+}
+
 export class SiteAnalysisService {
   private browserService: CloudflareBrowserService;
 
@@ -161,6 +168,10 @@ export class SiteAnalysisService {
 
       // Step 2: Analyze page structure using AI with structured output
       console.log(`🤖 [${analysisId}] Step 2: Analyzing page structure with AI...`);
+      const lytxDetected = hasLytxScriptTag(pageContent.html);
+      if (lytxDetected) {
+        console.log(`🔎 [${analysisId}] Detected existing LYTX script tag in HTML.`);
+      }
       const pageAnalysisResult = await generateText({
         model: openai('gpt-4o-mini'),
         messages: [
@@ -196,6 +207,10 @@ Only return valid JSON, no other text or markdown formatting.`,
 HTML (truncated if needed):
 ${pageContent.html.substring(0, 8000)} ${pageContent.html.length > 8000 ? '... (truncated)' : ''}`,
           },
+          {
+            role: 'system',
+            content: `Detector note: Existing LYTX script present in HTML = ${lytxDetected}. If true, ensure the analytics list includes "LYTX".`,
+          },
         ],
       });
 
@@ -217,6 +232,11 @@ ${pageContent.html.substring(0, 8000)} ${pageContent.html.length > 8000 ? '... (
         });
         
         pageAnalysis = JSON.parse(cleanJson);
+
+        // Ensure analytics reflects detected LYTX script
+        if (lytxDetected && !pageAnalysis.technicalStack.analytics.includes('LYTX')) {
+          pageAnalysis.technicalStack.analytics = [...pageAnalysis.technicalStack.analytics, 'LYTX'];
+        }
         console.log(`✅ [${analysisId}] Page analysis parsed successfully:`, {
           title: pageAnalysis.title,
           headingsCount: pageAnalysis.headings.length,
@@ -274,6 +294,10 @@ ${JSON.stringify(pageAnalysis, null, 2)}
 
 Consider the technical stack, content type, and existing analytics when making recommendations.`,
           },
+          {
+            role: 'system',
+            content: `Detector note: LYTX already installed on site = ${pageAnalysis.technicalStack.analytics.includes('LYTX')}. If true, acknowledge it in tagPlacements and avoid duplicating the core tag.`,
+          },
         ],
       });
 
@@ -300,6 +324,20 @@ Consider the technical stack, content type, and existing analytics when making r
           implementation: e.implementation
             .replace(/lytrack\s*\(/gi, "window.lytxApi.event('<ACCOUNT>', 'web', ")
         }));
+        // If LYTX already installed, avoid duplicate core tag recommendations and add acknowledgement
+        if (pageAnalysis.technicalStack.analytics.includes('LYTX')) {
+          const isCoreTagCode = (code: string) => /lytx\.io\/lytx\.js|analytics\.lytx\.io/i.test(code);
+          let placements = lytxRecommendations.tagPlacements.filter(p => !isCoreTagCode(p.code));
+          const acknowledgment = {
+            location: 'head' as const,
+            reason: 'LYTX appears to be already installed on this site. Verify configuration and ensure events are firing as expected.',
+            priority: 'low' as const,
+            code: ''
+          };
+          placements = [acknowledgment, ...placements];
+          lytxRecommendations.tagPlacements = placements;
+        }
+
         console.log(`✅ [${analysisId}] LYTX recommendations parsed successfully:`, {
           tagPlacementsCount: lytxRecommendations.tagPlacements.length,
           trackingEventsCount: lytxRecommendations.trackingEvents.length,
