@@ -34,6 +34,8 @@ export const LYTXRecommendationSchema = z.object({
     event: z.string(),
     trigger: z.string(),
     implementation: z.string(),
+    conversionImpact: z.enum(['high', 'medium', 'low']).optional(),
+    conversionReason: z.string().optional(),
   })),
   optimizations: z.array(z.object({
     category: z.enum(['performance', 'user_experience', 'conversion']),

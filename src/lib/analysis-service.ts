@@ -276,7 +276,9 @@ ${pageContent.html.substring(0, 8000)} ${pageContent.html.length > 8000 ? '... (
   "trackingEvents": [{
     "event": "string event name",
     "trigger": "string describing when it triggers", 
-    "implementation": "string with code example"
+    "implementation": "string with code example",
+    "conversionImpact": "high|medium|low (how much this impacts conversions/ROI)",
+    "conversionReason": "1-2 sentences explaining the conversion/ROI rationale"
   }],
   "optimizations": [{
     "category": "performance|user_experience|conversion",

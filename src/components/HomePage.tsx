@@ -34,6 +34,8 @@ interface AnalysisResult {
       event: string;
       trigger: string;
       implementation: string;
+      conversionImpact?: 'high' | 'medium' | 'low';
+      conversionReason?: string;
     }[];
     optimizations: {
       category: string;
@@ -255,20 +257,38 @@ export function HomePage() {
                     <div>
                       <h3 className="text-lg font-semibold text-gray-800 mb-3">Tracking Events</h3>
                       <div className="space-y-3">
-                        {result.lytxRecommendations.trackingEvents.map((event, index) => (
-                          <div key={index} className="border border-gray-200 rounded-lg p-4">
+                    {result.lytxRecommendations.trackingEvents.map((event, index) => (
+                      <div key={index} className="border border-gray-200 rounded-lg p-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
                             <h4 className="font-medium text-gray-800">{event.event}</h4>
                             <p className="text-sm text-gray-600 mb-2">Trigger: {event.trigger}</p>
-                            <div className="relative">
-                              <pre className="bg-gray-50 p-2 rounded text-sm overflow-x-auto">
-                                <code>{event.implementation}</code>
-                              </pre>
-                              <div className="absolute top-2 right-2">
-                                <CopyButton text={event.implementation} small />
+                            {event.conversionImpact && (
+                              <div className="text-xs inline-flex items-center gap-2 mb-2">
+                                <span className={`px-2 py-1 rounded ${
+                                  event.conversionImpact === 'high' ? 'bg-red-100 text-red-800' :
+                                  event.conversionImpact === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                                  'bg-green-100 text-green-800'
+                                }`}>
+                                  {event.conversionImpact} conversion impact
+                                </span>
+                                {event.conversionReason && (
+                                  <span className="text-gray-600">{event.conversionReason}</span>
+                                )}
                               </div>
-                            </div>
+                            )}
                           </div>
-                        ))}
+                        </div>
+                        <div className="relative">
+                          <pre className="bg-gray-50 p-2 rounded text-sm overflow-x-auto">
+                            <code>{event.implementation}</code>
+                          </pre>
+                          <div className="absolute top-2 right-2">
+                            <CopyButton text={event.implementation} small />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                       </div>
                     </div>
 
