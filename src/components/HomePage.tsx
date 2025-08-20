@@ -48,8 +48,10 @@ interface AnalysisResult {
 export function HomePage() {
   const [url, setUrl] = useState('');
   const [lytxKey, setLytxKey] = useState('');
+  const [crawl, setCrawl] = useState<boolean>(false);
+  const [maxPages, setMaxPages] = useState<number>(5);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [results, setResults] = useState<AnalysisResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const analyzeWebsite = async (e: React.FormEvent) => {
@@ -58,23 +60,28 @@ export function HomePage() {
 
     setLoading(true);
     setError(null);
-    setResult(null);
+    setResults(null);
 
     try {
-      const response = await fetch('/api/analyze', {
+      const endpoint = crawl ? '/api/analyze-crawl' : '/api/analyze';
+      const payload = crawl ? { url, maxPages } : { url };
+      const response = await fetch(endpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ url }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
         throw new Error(`Analysis failed: ${response.statusText}`);
       }
 
-      const analysisResult: AnalysisResult = await response.json();
-      setResult(analysisResult);
+      if (crawl) {
+        const arr: AnalysisResult[] = await response.json();
+        setResults(arr);
+      } else {
+        const single: AnalysisResult = await response.json();
+        setResults([single]);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
@@ -111,6 +118,31 @@ export function HomePage() {
                 required
                 disabled={loading}
               />
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={crawl}
+                  onChange={(e) => setCrawl(e.target.checked)}
+                  disabled={loading}
+                />
+                Crawl internal links
+              </label>
+              <div className="flex items-center gap-2">
+                <label htmlFor="maxPages" className="text-sm text-gray-700">Max pages</label>
+                <input
+                  type="number"
+                  id="maxPages"
+                  min={1}
+                  max={20}
+                  value={maxPages}
+                  onChange={(e) => setMaxPages(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
+                  className="w-20 px-2 py-1 border border-gray-300 rounded"
+                  disabled={loading || !crawl}
+                />
+              </div>
             </div>
             <div>
               <label htmlFor="lytxKey" className="block text-sm font-medium text-gray-700 mb-2">
@@ -155,107 +187,111 @@ export function HomePage() {
           </div>
         )}
 
-        {result && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">Page Analysis</h2>
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-2">Basic Information</h3>
-                  <p><strong>Title:</strong> {result.pageAnalysis.title}</p>
-                  {result.pageAnalysis.description && (
-                    <p><strong>Description:</strong> {result.pageAnalysis.description}</p>
-                  )}
-                  <p><strong>URL:</strong> {result.pageAnalysis.url}</p>
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-2">Technical Stack</h3>
-                  {result.pageAnalysis.technicalStack.framework && (
-                    <p><strong>Framework:</strong> {result.pageAnalysis.technicalStack.framework}</p>
-                  )}
-                  {result.pageAnalysis.technicalStack.cms && (
-                    <p><strong>CMS:</strong> {result.pageAnalysis.technicalStack.cms}</p>
-                  )}
-                  <p><strong>Analytics:</strong> {result.pageAnalysis.technicalStack.analytics.join(', ') || 'None detected'}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">LYTX Implementation Recommendations</h2>
-              
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-3">Tag Placements</h3>
-                  <div className="space-y-4">
-                    {result.lytxRecommendations.tagPlacements.map((placement, index) => (
-                      <div key={index} className="border border-gray-200 rounded-lg p-4">
-                        <div className="flex justify-between items-start mb-2">
-                          <h4 className="font-medium text-gray-800">Location: {placement.location}</h4>
-                          <span className={`px-2 py-1 text-xs rounded ${
-                            placement.priority === 'high' 
-                              ? 'bg-red-100 text-red-800' 
-                              : placement.priority === 'medium'
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : 'bg-green-100 text-green-800'
-                          }`}>
-                            {placement.priority} priority
-                          </span>
-                        </div>
-                        <p className="text-sm text-gray-600 mb-3">{placement.reason}</p>
-                        <div className="relative">
-                          <pre className="bg-gray-50 p-3 rounded text-sm overflow-x-auto">
-                            <code>{placement.code}</code>
-                          </pre>
-                          <div className="absolute top-2 right-2">
-                            <CopyButton text={placement.code} />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+        {Array.isArray(results) && results.length > 0 && (
+          <div className="space-y-8">
+            {results.map((result, i) => (
+              <section key={i} className="space-y-6">
+                <div className="bg-white rounded-lg shadow-md p-6">
+                  <div className="flex items-center justify-between mb-2">
+                    <h2 className="text-2xl font-bold text-gray-900">Page Analysis</h2>
+                    {results.length > 1 && (
+                      <span className="text-sm text-gray-500">{i + 1} of {results.length}</span>
+                    )}
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-800 mb-2">Basic Information</h3>
+                      <p><strong>Title:</strong> {result.pageAnalysis.title}</p>
+                      {result.pageAnalysis.description && (
+                        <p><strong>Description:</strong> {result.pageAnalysis.description}</p>
+                      )}
+                      <p><strong>URL:</strong> {result.pageAnalysis.url}</p>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-800 mb-2">Technical Stack</h3>
+                      {result.pageAnalysis.technicalStack.framework && (
+                        <p><strong>Framework:</strong> {result.pageAnalysis.technicalStack.framework}</p>
+                      )}
+                      {result.pageAnalysis.technicalStack.cms && (
+                        <p><strong>CMS:</strong> {result.pageAnalysis.technicalStack.cms}</p>
+                      )}
+                      <p><strong>Analytics:</strong> {result.pageAnalysis.technicalStack.analytics.join(', ') || 'None detected'}</p>
+                    </div>
                   </div>
                 </div>
 
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-3">Tracking Events</h3>
-                  <div className="space-y-3">
-                    {result.lytxRecommendations.trackingEvents.map((event, index) => (
-                      <div key={index} className="border border-gray-200 rounded-lg p-4">
-                        <h4 className="font-medium text-gray-800">{event.event}</h4>
-                        <p className="text-sm text-gray-600 mb-2">Trigger: {event.trigger}</p>
-                        <div className="relative">
-                          <pre className="bg-gray-50 p-2 rounded text-sm overflow-x-auto">
-                            <code>{event.implementation}</code>
-                          </pre>
-                          <div className="absolute top-2 right-2">
-                            <CopyButton text={event.implementation} small />
+                <div className="bg-white rounded-lg shadow-md p-6">
+                  <h2 className="text-2xl font-bold text-gray-900 mb-4">LYTX Implementation Recommendations</h2>
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-800 mb-3">Tag Placements</h3>
+                      <div className="space-y-4">
+                        {result.lytxRecommendations.tagPlacements.map((placement, index) => (
+                          <div key={index} className="border border-gray-200 rounded-lg p-4">
+                            <div className="flex justify-between items-start mb-2">
+                              <h4 className="font-medium text-gray-800">Location: {placement.location}</h4>
+                              <span className={`px-2 py-1 text-xs rounded ${
+                                placement.priority === 'high' ? 'bg-red-100 text-red-800'
+                                  : placement.priority === 'medium' ? 'bg-yellow-100 text-yellow-800'
+                                  : 'bg-green-100 text-green-800'
+                              }`}>
+                                {placement.priority} priority
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-600 mb-3">{placement.reason}</p>
+                            <div className="relative">
+                              <pre className="bg-gray-50 p-3 rounded text-sm overflow-x-auto">
+                                <code>{placement.code}</code>
+                              </pre>
+                              <div className="absolute top-2 right-2">
+                                <CopyButton text={placement.code} />
+                              </div>
+                            </div>
                           </div>
-                        </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    </div>
 
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-3">Optimization Suggestions</h3>
-                  <div className="space-y-3">
-                    {result.lytxRecommendations.optimizations.map((optimization, index) => (
-                      <div key={index} className="border border-gray-200 rounded-lg p-4">
-                        <div className="flex justify-between items-start mb-2">
-                          <h4 className="font-medium text-gray-800 capitalize">{optimization.category}</h4>
-                          <span className={`px-2 py-1 text-xs rounded ${
-                            optimization.impact === 'high' 
-                              ? 'bg-red-100 text-red-800' 
-                              : optimization.impact === 'medium'
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : 'bg-green-100 text-green-800'
-                          }`}>
-                            {optimization.impact} impact
-                          </span>
-                        </div>
-                        <p className="text-sm text-gray-600">{optimization.suggestion}</p>
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-800 mb-3">Tracking Events</h3>
+                      <div className="space-y-3">
+                        {result.lytxRecommendations.trackingEvents.map((event, index) => (
+                          <div key={index} className="border border-gray-200 rounded-lg p-4">
+                            <h4 className="font-medium text-gray-800">{event.event}</h4>
+                            <p className="text-sm text-gray-600 mb-2">Trigger: {event.trigger}</p>
+                            <div className="relative">
+                              <pre className="bg-gray-50 p-2 rounded text-sm overflow-x-auto">
+                                <code>{event.implementation}</code>
+                              </pre>
+                              <div className="absolute top-2 right-2">
+                                <CopyButton text={event.implementation} small />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    </div>
+
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-800 mb-3">Optimization Suggestions</h3>
+                      <div className="space-y-3">
+                        {result.lytxRecommendations.optimizations.map((optimization, index) => (
+                          <div key={index} className="border border-gray-200 rounded-lg p-4">
+                            <div className="flex justify-between items-start mb-2">
+                              <h4 className="font-medium text-gray-800 capitalize">{optimization.category}</h4>
+                              <span className={`px-2 py-1 text-xs rounded ${
+                                optimization.impact === 'high' ? 'bg-red-100 text-red-800'
+                                  : optimization.impact === 'medium' ? 'bg-yellow-100 text-yellow-800'
+                                  : 'bg-green-100 text-green-800'
+                              }`}>
+                                {optimization.impact} impact
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-600">{optimization.suggestion}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
                 {lytxKey && (
@@ -264,8 +300,8 @@ export function HomePage() {
                     <EmbedSnippet url={result.pageAnalysis.url} accountKey={lytxKey} />
                   </div>
                 )}
-              </div>
-            </div>
+              </section>
+            ))}
           </div>
         )}
       </div>
