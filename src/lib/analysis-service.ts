@@ -240,7 +240,12 @@ ${pageContent.html.substring(0, 8000)} ${pageContent.html.length > 8000 ? '... (
         messages: [
           {
             role: 'system',
-            content: `You are a LYTX analytics expert. Based on page analysis data, provide LYTX implementation recommendations in this JSON format:
+            content: `You are a LYTX analytics expert. Based on page analysis data, provide LYTX implementation recommendations in this JSON format. IMPORTANT IMPLEMENTATION RULES:
+1) The core tag MUST use: <script defer data-domain="<domain>" src="https://lytx.io/lytx.js?account=<ACCOUNT>"></script>
+2) For custom events, ALWAYS use: window.lytxApi.event('<ACCOUNT>', 'web', '<event_name>')
+3) Do NOT use 'lytrack', 'analytics.lytx.io', or other vendors. Use only LYTX patterns above.
+4) Provide minimal, copy-pasteable code that matches these rules.
+
 {
   "tagPlacements": [{
     "location": "head|body_start|body_end|after_content",
@@ -282,6 +287,19 @@ Consider the technical stack, content type, and existing analytics when making r
         // Extract JSON from response (handles markdown code blocks)
         const cleanJson = extractJsonFromResponse(recommendationsResult.text);
         lytxRecommendations = JSON.parse(cleanJson);
+
+        // Enforce vendor-specific implementation details post-parse as a safeguard
+        lytxRecommendations.tagPlacements = lytxRecommendations.tagPlacements.map(p => ({
+          ...p,
+          code: p.code
+            .replace(/analytics\.lytx\.io\S*/gi, 'lytx.io/lytx.js?account=<ACCOUNT>')
+            .replace(/lytrack\s*\(/gi, "window.lytxApi.event('<ACCOUNT>', 'web', ")
+        }));
+        lytxRecommendations.trackingEvents = lytxRecommendations.trackingEvents.map(e => ({
+          ...e,
+          implementation: e.implementation
+            .replace(/lytrack\s*\(/gi, "window.lytxApi.event('<ACCOUNT>', 'web', ")
+        }));
         console.log(`✅ [${analysisId}] LYTX recommendations parsed successfully:`, {
           tagPlacementsCount: lytxRecommendations.tagPlacements.length,
           trackingEventsCount: lytxRecommendations.trackingEvents.length,
