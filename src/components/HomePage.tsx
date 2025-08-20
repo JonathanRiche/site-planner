@@ -203,9 +203,14 @@ export function HomePage() {
                           </span>
                         </div>
                         <p className="text-sm text-gray-600 mb-3">{placement.reason}</p>
-                        <pre className="bg-gray-50 p-3 rounded text-sm overflow-x-auto">
-                          <code>{placement.code}</code>
-                        </pre>
+                        <div className="relative">
+                          <pre className="bg-gray-50 p-3 rounded text-sm overflow-x-auto">
+                            <code>{placement.code}</code>
+                          </pre>
+                          <div className="absolute top-2 right-2">
+                            <CopyButton text={placement.code} />
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -218,9 +223,14 @@ export function HomePage() {
                       <div key={index} className="border border-gray-200 rounded-lg p-4">
                         <h4 className="font-medium text-gray-800">{event.event}</h4>
                         <p className="text-sm text-gray-600 mb-2">Trigger: {event.trigger}</p>
-                        <pre className="bg-gray-50 p-2 rounded text-sm">
-                          <code>{event.implementation}</code>
-                        </pre>
+                        <div className="relative">
+                          <pre className="bg-gray-50 p-2 rounded text-sm overflow-x-auto">
+                            <code>{event.implementation}</code>
+                          </pre>
+                          <div className="absolute top-2 right-2">
+                            <CopyButton text={event.implementation} small />
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -270,5 +280,32 @@ function EmbedSnippet({ url, accountKey }: { url: string; accountKey: string }) 
     <pre className="bg-gray-50 p-3 rounded text-sm overflow-x-auto">
       <code>{snippet}</code>
     </pre>
+  );
+}
+
+function CopyButton({ text, small = false }: { text: string; small?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const sizeClasses = small ? 'p-1 text-xs' : 'p-2 text-sm';
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // no-op
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className={`inline-flex items-center gap-1 bg-white/80 hover:bg-white text-gray-700 border border-gray-300 rounded ${sizeClasses}`}
+      title={copied ? 'Copied!' : 'Copy to clipboard'}
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={small ? 'w-4 h-4' : 'w-5 h-5'}>
+        <path d="M16 1H4c-1.1 0-2 .9-2 2v12h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
+      </svg>
+      {copied ? 'Copied' : 'Copy'}
+    </button>
   );
 }
