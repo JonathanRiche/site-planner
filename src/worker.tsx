@@ -3,6 +3,7 @@ import { route, render } from "rwsdk/router";
 import { Document } from "./Document";
 import { HomePage } from "./components/HomePage";
 import analyzeHandler from "./api/analyze";
+import analyzeCrawlHandler from "./api/analyze-crawl";
 export type AppContext = {
 };
 export default defineApp([
@@ -11,5 +12,6 @@ export default defineApp([
 	render(Document, [
 		route("/", () => <HomePage />),
 		route("/api/analyze", analyzeHandler),
+		route("/api/analyze-crawl", analyzeCrawlHandler),
 	]),
 ]);
