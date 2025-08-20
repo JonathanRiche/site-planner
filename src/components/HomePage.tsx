@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { createLytxTag, inferDomainFromUrl } from '@vendors/lytx';
 
 interface AnalysisResult {
   pageAnalysis: {
@@ -46,6 +47,7 @@ interface AnalysisResult {
 
 export function HomePage() {
   const [url, setUrl] = useState('');
+  const [lytxKey, setLytxKey] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -107,6 +109,20 @@ export function HomePage() {
                 placeholder="https://example.com"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 required
+                disabled={loading}
+              />
+            </div>
+            <div>
+              <label htmlFor="lytxKey" className="block text-sm font-medium text-gray-700 mb-2">
+                Optional: LYTX Account Key (to generate embed snippet)
+              </label>
+              <input
+                type="text"
+                id="lytxKey"
+                value={lytxKey}
+                onChange={(e) => setLytxKey(e.target.value)}
+                placeholder="acct_123..."
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 disabled={loading}
               />
             </div>
@@ -232,11 +248,27 @@ export function HomePage() {
                     ))}
                   </div>
                 </div>
+                {lytxKey && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-800 mb-3">Generated Embed Snippet</h3>
+                    <EmbedSnippet url={result.pageAnalysis.url} accountKey={lytxKey} />
+                  </div>
+                )}
               </div>
             </div>
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+function EmbedSnippet({ url, accountKey }: { url: string; accountKey: string }) {
+  const domain = useMemo(() => inferDomainFromUrl(url), [url]);
+  const snippet = useMemo(() => createLytxTag(accountKey, domain), [accountKey, domain]);
+  return (
+    <pre className="bg-gray-50 p-3 rounded text-sm overflow-x-auto">
+      <code>{snippet}</code>
+    </pre>
   );
 }
