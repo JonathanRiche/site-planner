@@ -25,6 +25,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@vendors/*": [
+        "./src/vendors/*"
       ]
     },
     /* Enable importing .json files */
