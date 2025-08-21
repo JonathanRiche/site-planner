@@ -411,4 +411,105 @@ Consider the technical stack, content type, and existing analytics when making r
     
     return results;
   }
+
+  // Analyze provided HTML directly (no fetching/rendering)
+  async analyzeProvidedHtml(url: string, html: string): Promise<SiteAnalysisResult> {
+    const analysisId = crypto.randomUUID();
+    const startTime = Date.now();
+    console.log(`🔍 [${analysisId}] Starting direct HTML analysis for: ${url}`);
+
+    // Prepare a faux pageContent
+    const pageContent = {
+      html,
+      title: (html.match(/<title[^>]*>(.*?)<\/title>/i)?.[1] || 'No title found').trim(),
+      url,
+      metadata: {
+        viewport: { width: 1280, height: 720 },
+        loadTime: 0,
+        timestamp: new Date().toISOString(),
+      },
+    } as const;
+
+    try {
+      // Reuse the same AI steps as analyzeSite
+      console.log(`🤖 [${analysisId}] Analyzing page structure with AI (provided HTML)...`);
+      const lytxDetected = hasLytxScriptTag(pageContent.html);
+      const pageAnalysisResult = await generateText({
+        model: openai('gpt-4o-mini'),
+        messages: [
+          {
+            role: 'system',
+            content: `You are a website analysis expert. Analyze the provided HTML and return a JSON object with the following structure:
+{\n  "url": "string",\n  "title": "string", \n  "description": "string (optional)",\n  "headings": [{"level": number, "text": "string"}],\n  "keyContent": "string (first 500 chars of main content)",\n  "technicalStack": {\n    "framework": "string (optional - React, Next.js, etc)",\n    "cms": "string (optional - WordPress, Shopify, etc)", \n    "analytics": ["string array of detected analytics tools"]\n  },\n  "seoMetrics": {\n    "hasMetaTitle": boolean,\n    "hasMetaDescription": boolean,\n    "hasStructuredData": boolean,\n    "imageCount": number,\n    "linkCount": number\n  }\n}\n\nOnly return valid JSON, no other text or markdown formatting.`,
+          },
+          { role: 'user', content: `Please analyze this webpage HTML: ${pageContent.url}\n\nHTML (truncated if needed):\n${pageContent.html.substring(0, 8000)} ${pageContent.html.length > 8000 ? '... (truncated)' : ''}` },
+          { role: 'system', content: `Detector note: Existing LYTX script present in HTML = ${lytxDetected}. If true, ensure the analytics list includes "LYTX".` },
+        ],
+      });
+
+      let pageAnalysis: PageAnalysis;
+      const cleanJson = extractJsonFromResponse(pageAnalysisResult.text);
+      pageAnalysis = JSON.parse(cleanJson);
+      if (lytxDetected && !pageAnalysis.technicalStack.analytics.includes('LYTX')) {
+        pageAnalysis.technicalStack.analytics = [...pageAnalysis.technicalStack.analytics, 'LYTX'];
+      }
+
+      // Recommendations
+      const recommendationsResult = await generateText({
+        model: openai('gpt-4o-mini'),
+        messages: [
+          {
+            role: 'system',
+            content: `You are a LYTX analytics expert. Based on page analysis data, provide LYTX implementation recommendations in this JSON format. IMPORTANT IMPLEMENTATION RULES:
+1) The core tag MUST use: <script defer data-domain="<domain>" src="https://lytx.io/lytx.js?account=<ACCOUNT>"></script>
+2) For custom events, ALWAYS use: window.lytxApi.event('<ACCOUNT>', 'web', '<event_name>')
+3) Do NOT use 'lytrack', 'analytics.lytx.io', or other vendors. Use only LYTX patterns above.
+4) Provide minimal, copy-pasteable code that matches these rules.
+
+{\n  "tagPlacements": [{\n    "location": "head|body_start|body_end|after_content",\n    "reason": "string explaining why this placement",\n    "priority": "high|medium|low", \n    "code": "string with actual implementation code"\n  }],\n  "trackingEvents": [{\n    "event": "string event name",\n    "trigger": "string describing when it triggers", \n    "implementation": "string with code example",\n    "conversionImpact": "high|medium|low (how much this impacts conversions/ROI)",\n    "conversionReason": "1-2 sentences explaining the conversion/ROI rationale"\n  }],\n  "optimizations": [{\n    "category": "performance|user_experience|conversion",\n    "suggestion": "string describing the optimization",\n    "impact": "high|medium|low"\n  }]\n}\n\nFocus on LYTX-specific implementation. Only return valid JSON, no other text or markdown formatting.`,
+          },
+          { role: 'user', content: `Generate LYTX recommendations for this page analysis:\n${JSON.stringify(pageAnalysis, null, 2)}\n\nConsider the technical stack, content type, and existing analytics when making recommendations.` },
+          { role: 'system', content: `Detector note: LYTX already installed on site = ${pageAnalysis.technicalStack.analytics.includes('LYTX')}. If true, acknowledge it in tagPlacements and avoid duplicating the core tag.` },
+        ],
+      });
+
+      const recsJson = extractJsonFromResponse(recommendationsResult.text);
+      let lytxRecommendations: LYTXRecommendation = JSON.parse(recsJson);
+      lytxRecommendations.tagPlacements = lytxRecommendations.tagPlacements.map(p => ({
+        ...p,
+        code: p.code
+          .replace(/analytics\.lytx\.io\S*/gi, 'lytx.io/lytx.js?account=<ACCOUNT>')
+          .replace(/lytrack\s*\(/gi, "window.lytxApi.event('<ACCOUNT>', 'web', ")
+      }));
+      lytxRecommendations.trackingEvents = lytxRecommendations.trackingEvents.map(e => ({
+        ...e,
+        implementation: e.implementation
+          .replace(/lytrack\s*\(/gi, "window.lytxApi.event('<ACCOUNT>', 'web', ")
+      }));
+      if (pageAnalysis.technicalStack.analytics.includes('LYTX')) {
+        const isCoreTagCode = (code: string) => /lytx\.io\/lytx\.js|analytics\.lytx\.io/i.test(code);
+        let placements = lytxRecommendations.tagPlacements.filter(p => !isCoreTagCode(p.code));
+        placements = [{
+          location: 'head' as const,
+          reason: 'LYTX appears to be already installed on this site. Verify configuration and ensure events are firing as expected.',
+          priority: 'low' as const,
+          code: ''
+        }, ...placements];
+        lytxRecommendations.tagPlacements = placements;
+      }
+
+      const totalTime = Date.now() - startTime;
+      const analysisResult: SiteAnalysisResult = {
+        pageAnalysis,
+        lytxRecommendations,
+        analysisId,
+        timestamp: new Date().toISOString(),
+      };
+      console.log(`🏁 [${analysisId}] Direct HTML analysis completed in ${totalTime}ms`);
+      return analysisResult;
+    } catch (error) {
+      console.error(`💥 [${analysisId}] Direct HTML analysis failed:`, error);
+      throw error;
+    }
+  }
 }

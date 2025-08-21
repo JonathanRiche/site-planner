@@ -61,6 +61,8 @@ export function HomePage() {
     | { stage: 'crawling'; url: string; allUrls?: string[]; selectedUrls?: string[] }
     | { stage: 'analyzing'; current: number; total: number }
   >({ stage: 'idle' });
+  const [pasteHtmlOpen, setPasteHtmlOpen] = useState<boolean>(false);
+  const [pastedHtml, setPastedHtml] = useState<string>('');
 
   const analyzeWebsite = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -218,6 +220,69 @@ export function HomePage() {
               {loading ? 'Analyzing...' : 'Analyze Website'}
             </button>
           </form>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-lg font-semibold text-gray-800">Alternate Input</h3>
+            <button
+              type="button"
+              className="text-sm text-blue-600 hover:underline"
+              onClick={() => setPasteHtmlOpen((v) => !v)}
+            >
+              {pasteHtmlOpen ? 'Hide' : 'Paste HTML'}
+            </button>
+          </div>
+          {pasteHtmlOpen && (
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!url || !pastedHtml) return;
+                try {
+                  setLoading(true);
+                  setError(null);
+                  setResults(null);
+                  setProgress({ stage: 'analyzing', current: 0, total: 1 });
+                  const res = await fetch('/api/analyze-html', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url, html: pastedHtml }),
+                  });
+                  if (!res.ok) {
+                    let detail = res.statusText;
+                    try { const data = await res.json(); if (data?.error) detail = data.error; } catch {}
+                    throw new Error(`Analyze HTML failed: ${detail}`);
+                  }
+                  const single: AnalysisResult = await res.json();
+                  setResults([single]);
+                  setSelectedIndex(0);
+                  setProgress({ stage: 'idle' });
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : 'Analyze HTML failed');
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              className="space-y-3"
+            >
+              <textarea
+                value={pastedHtml}
+                onChange={(e) => setPastedHtml(e.target.value)}
+                placeholder="Paste full page HTML here..."
+                rows={8}
+                className="w-full px-3 py-2 border border-gray-300 rounded font-mono text-xs"
+                disabled={loading}
+                required
+              />
+              <button
+                type="submit"
+                disabled={loading || !url || !pastedHtml}
+                className="bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                Analyze Pasted HTML
+              </button>
+            </form>
+          )}
         </div>
 
         {error && (

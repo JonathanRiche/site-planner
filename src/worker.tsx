@@ -5,6 +5,7 @@ import { HomePage } from "./components/HomePage";
 import analyzeHandler from "./api/analyze";
 import analyzeCrawlHandler from "./api/analyze-crawl";
 import crawlLinksHandler from "./api/crawl-links";
+import analyzeHtmlHandler from "./api/analyze-html";
 export type AppContext = {
 };
 export default defineApp([
@@ -15,5 +16,6 @@ export default defineApp([
 		route("/api/analyze", analyzeHandler),
 		route("/api/analyze-crawl", analyzeCrawlHandler),
 		route("/api/crawl-links", crawlLinksHandler),
+		route("/api/analyze-html", analyzeHtmlHandler),
 	]),
 ]);
