@@ -80,7 +80,14 @@ export function HomePage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url, maxPages }),
         });
-        if (!crawlRes.ok) throw new Error(`Crawl failed: ${crawlRes.statusText}`);
+        if (!crawlRes.ok) {
+          let detail = crawlRes.statusText;
+          try {
+            const data = await crawlRes.json();
+            if (data?.error) detail = data.error;
+          } catch {}
+          throw new Error(`Crawl failed: ${detail}`);
+        }
         const { urls, allUrls } = await crawlRes.json() as { urls: string[]; allUrls: string[] };
         setProgress({ stage: 'crawling', url, allUrls, selectedUrls: urls });
 
@@ -91,7 +98,14 @@ export function HomePage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url, maxPages }),
         });
-        if (!analyzeRes.ok) throw new Error(`Analysis failed: ${analyzeRes.statusText}`);
+        if (!analyzeRes.ok) {
+          let detail = analyzeRes.statusText;
+          try {
+            const data = await analyzeRes.json();
+            if (data?.error) detail = data.error;
+          } catch {}
+          throw new Error(`Analysis failed: ${detail}`);
+        }
         const arr: AnalysisResult[] = await analyzeRes.json();
         setResults(arr);
         setSelectedIndex(0);
@@ -103,7 +117,14 @@ export function HomePage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url }),
         });
-        if (!response.ok) throw new Error(`Analysis failed: ${response.statusText}`);
+        if (!response.ok) {
+          let detail = response.statusText;
+          try {
+            const data = await response.json();
+            if (data?.error) detail = data.error;
+          } catch {}
+          throw new Error(`Analysis failed: ${detail}`);
+        }
         const single: AnalysisResult = await response.json();
         setResults([single]);
         setSelectedIndex(0);
@@ -205,12 +226,12 @@ export function HomePage() {
               <div className="ml-3">
                 <h3 className="text-sm font-medium text-red-800">Analysis Error</h3>
                 <div className="mt-2 text-sm text-red-700">{error}</div>
-                {error.includes('blocked') && (
+                {(/blocked|captcha/i.test(error)) && (
                   <div className="mt-3 text-sm text-red-600">
                     <strong>Bot Protection Detected:</strong> This website is using security measures that may block automated analysis. 
                     This is common with sites protected by Cloudflare, Imperva, or other security services.
                     <br />
-                    <em>Tip: Try analyzing a different page on the same domain or wait a few minutes before retrying.</em>
+                    <em>Tips: Try analyzing a different page on the same domain, wait a few minutes and retry, or disable crawl and analyze a single URL. If you control the site, temporarily whitelist your requests.</em>
                   </div>
                 )}
               </div>
