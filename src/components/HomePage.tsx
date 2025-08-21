@@ -55,6 +55,7 @@ export function HomePage() {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<AnalysisResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number>(0);
 
   const analyzeWebsite = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,9 +81,11 @@ export function HomePage() {
       if (crawl) {
         const arr: AnalysisResult[] = await response.json();
         setResults(arr);
+        setSelectedIndex(0);
       } else {
         const single: AnalysisResult = await response.json();
         setResults([single]);
+        setSelectedIndex(0);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -90,6 +93,10 @@ export function HomePage() {
       setLoading(false);
     }
   };
+
+  const selectedResult = Array.isArray(results) && results.length > 0
+    ? results[Math.min(selectedIndex, results.length - 1)]
+    : null;
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
@@ -189,35 +196,53 @@ export function HomePage() {
           </div>
         )}
 
-        {Array.isArray(results) && results.length > 0 && (
-          <div className="space-y-8">
-            {results.map((result, i) => (
-              <section key={i} className="space-y-6">
+        {selectedResult && (
+          <div className="space-y-6">
+            {results && results.length > 1 && (
+              <div className="grid md:grid-cols-2 gap-4">
+                {results.map((r, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setSelectedIndex(i)}
+                    className={`text-left w-full border rounded-lg p-4 transition-colors ${
+                      i === selectedIndex ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="text-xs text-gray-500 mb-1">{new URL(r.pageAnalysis.url).hostname}</div>
+                    <div className="font-medium text-gray-900 truncate">{r.pageAnalysis.title || r.pageAnalysis.url}</div>
+                    <div className="text-xs text-gray-600 truncate">{r.pageAnalysis.url}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <section className="space-y-6">
                 <div className="bg-white rounded-lg shadow-md p-6">
                   <div className="flex items-center justify-between mb-2">
                     <h2 className="text-2xl font-bold text-gray-900">Page Analysis</h2>
-                    {results.length > 1 && (
-                      <span className="text-sm text-gray-500">{i + 1} of {results.length}</span>
+                    {results && results.length > 1 && (
+                      <span className="text-sm text-gray-500">{selectedIndex + 1} of {results.length}</span>
                     )}
                   </div>
                   <div className="grid md:grid-cols-2 gap-6">
                     <div>
                       <h3 className="text-lg font-semibold text-gray-800 mb-2">Basic Information</h3>
-                      <p><strong>Title:</strong> {result.pageAnalysis.title}</p>
-                      {result.pageAnalysis.description && (
-                        <p><strong>Description:</strong> {result.pageAnalysis.description}</p>
+                      <p><strong>Title:</strong> {selectedResult.pageAnalysis.title}</p>
+                      {selectedResult.pageAnalysis.description && (
+                        <p><strong>Description:</strong> {selectedResult.pageAnalysis.description}</p>
                       )}
-                      <p><strong>URL:</strong> {result.pageAnalysis.url}</p>
+                      <p><strong>URL:</strong> {selectedResult.pageAnalysis.url}</p>
                     </div>
                     <div>
                       <h3 className="text-lg font-semibold text-gray-800 mb-2">Technical Stack</h3>
-                      {result.pageAnalysis.technicalStack.framework && (
-                        <p><strong>Framework:</strong> {result.pageAnalysis.technicalStack.framework}</p>
+                      {selectedResult.pageAnalysis.technicalStack.framework && (
+                        <p><strong>Framework:</strong> {selectedResult.pageAnalysis.technicalStack.framework}</p>
                       )}
-                      {result.pageAnalysis.technicalStack.cms && (
-                        <p><strong>CMS:</strong> {result.pageAnalysis.technicalStack.cms}</p>
+                      {selectedResult.pageAnalysis.technicalStack.cms && (
+                        <p><strong>CMS:</strong> {selectedResult.pageAnalysis.technicalStack.cms}</p>
                       )}
-                      <p><strong>Analytics:</strong> {result.pageAnalysis.technicalStack.analytics.join(', ') || 'None detected'}</p>
+                      <p><strong>Analytics:</strong> {selectedResult.pageAnalysis.technicalStack.analytics.join(', ') || 'None detected'}</p>
                     </div>
                   </div>
                 </div>
@@ -228,7 +253,7 @@ export function HomePage() {
                     <div>
                       <h3 className="text-lg font-semibold text-gray-800 mb-3">Tag Placements</h3>
                       <div className="space-y-4">
-                        {result.lytxRecommendations.tagPlacements.map((placement, index) => (
+                        {selectedResult.lytxRecommendations.tagPlacements.map((placement, index) => (
                           <div key={index} className="border border-gray-200 rounded-lg p-4">
                             <div className="flex justify-between items-start mb-2">
                               <h4 className="font-medium text-gray-800">Location: {placement.location}</h4>
@@ -257,7 +282,7 @@ export function HomePage() {
                     <div>
                       <h3 className="text-lg font-semibold text-gray-800 mb-3">Tracking Events</h3>
                       <div className="space-y-3">
-                    {result.lytxRecommendations.trackingEvents.map((event, index) => (
+                    {selectedResult.lytxRecommendations.trackingEvents.map((event, index) => (
                       <div key={index} className="border border-gray-200 rounded-lg p-4">
                         <div className="flex items-start justify-between gap-4">
                           <div>
@@ -295,7 +320,7 @@ export function HomePage() {
                     <div>
                       <h3 className="text-lg font-semibold text-gray-800 mb-3">Optimization Suggestions</h3>
                       <div className="space-y-3">
-                        {result.lytxRecommendations.optimizations.map((optimization, index) => (
+                        {selectedResult.lytxRecommendations.optimizations.map((optimization, index) => (
                           <div key={index} className="border border-gray-200 rounded-lg p-4">
                             <div className="flex justify-between items-start mb-2">
                               <h4 className="font-medium text-gray-800 capitalize">{optimization.category}</h4>
@@ -317,11 +342,10 @@ export function HomePage() {
                 {lytxKey && (
                   <div>
                     <h3 className="text-lg font-semibold text-gray-800 mb-3">Generated Embed Snippet</h3>
-                    <EmbedSnippet url={result.pageAnalysis.url} accountKey={lytxKey} />
+                  <EmbedSnippet url={selectedResult.pageAnalysis.url} accountKey={lytxKey} />
                   </div>
                 )}
-              </section>
-            ))}
+            </section>
           </div>
         )}
       </div>
