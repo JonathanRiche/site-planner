@@ -54,9 +54,9 @@ export default async function crawlLinksHandler({ request }: RequestInfo<any, Ap
 
     const browser = new CloudflareBrowserService();
     const page = await browser.renderPage(rootUrl, { useCache: true });
-    const internalLinks = extractInternalLinks(page.html, page.url, maxPages - 1);
-    const urls = [new URL(rootUrl).toString(), ...internalLinks];
-    return new Response(JSON.stringify({ urls }), {
+    const allUrls = extractInternalLinks(page.html, page.url, 100);
+    const selected = [new URL(rootUrl).toString(), ...allUrls.slice(0, Math.max(0, maxPages - 1))];
+    return new Response(JSON.stringify({ urls: selected, allUrls }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });

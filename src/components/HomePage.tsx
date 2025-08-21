@@ -58,7 +58,7 @@ export function HomePage() {
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [progress, setProgress] = useState<
     | { stage: 'idle' }
-    | { stage: 'crawling'; url: string }
+    | { stage: 'crawling'; url: string; allUrls?: string[]; selectedUrls?: string[] }
     | { stage: 'analyzing'; current: number; total: number }
   >({ stage: 'idle' });
 
@@ -81,7 +81,8 @@ export function HomePage() {
           body: JSON.stringify({ url, maxPages }),
         });
         if (!crawlRes.ok) throw new Error(`Crawl failed: ${crawlRes.statusText}`);
-        const { urls } = await crawlRes.json() as { urls: string[] };
+        const { urls, allUrls } = await crawlRes.json() as { urls: string[]; allUrls: string[] };
+        setProgress({ stage: 'crawling', url, allUrls, selectedUrls: urls });
 
         // Step 2: analyze all pages
         setProgress({ stage: 'analyzing', current: 0, total: urls.length });
@@ -220,7 +221,28 @@ export function HomePage() {
         {(progress.stage !== 'idle') && (
           <div className="mb-6">
             {progress.stage === 'crawling' && (
-              <div className="text-sm text-gray-700">Crawling pages from <strong>{progress.url}</strong>…</div>
+              <div className="space-y-2">
+                <div className="text-sm text-gray-700">Crawling pages from <strong>{progress.url}</strong>…</div>
+                {progress.allUrls && (
+                  <div className="text-xs text-gray-600">
+                    Found {progress.allUrls.length} internal links. Crawling up to {progress.selectedUrls?.length} due to max pages limit.
+                  </div>
+                )}
+                {progress.allUrls && (
+                  <div className="max-h-40 overflow-auto border border-gray-200 rounded p-2 bg-white text-xs">
+                    {progress.allUrls.map((u) => {
+                      const chosen = progress.selectedUrls?.includes(u);
+                      return (
+                        <div key={u} className="flex items-center gap-2 py-0.5">
+                          <span className={`inline-block w-2 h-2 rounded-full ${chosen ? 'bg-blue-600' : 'bg-gray-300'}`} />
+                          <span className={chosen ? 'text-gray-800' : 'text-gray-500'}>{u}</span>
+                          {!chosen && <span className="ml-auto text-gray-400">skipped</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             )}
             {progress.stage === 'analyzing' && (
               <div className="text-sm text-gray-700">Analyzing pages…</div>
