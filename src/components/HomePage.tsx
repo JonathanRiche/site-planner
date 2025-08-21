@@ -56,6 +56,11 @@ export function HomePage() {
   const [results, setResults] = useState<AnalysisResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
+  const [progress, setProgress] = useState<
+    | { stage: 'idle' }
+    | { stage: 'crawling'; url: string }
+    | { stage: 'analyzing'; current: number; total: number }
+  >({ stage: 'idle' });
 
   const analyzeWebsite = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,28 +69,44 @@ export function HomePage() {
     setLoading(true);
     setError(null);
     setResults(null);
+    setProgress({ stage: 'idle' });
 
     try {
-      const endpoint = crawl ? '/api/analyze-crawl' : '/api/analyze';
-      const payload = crawl ? { url, maxPages } : { url };
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Analysis failed: ${response.statusText}`);
-      }
-
       if (crawl) {
-        const arr: AnalysisResult[] = await response.json();
+        setProgress({ stage: 'crawling', url });
+        // Step 1: crawl links first for feedback
+        const crawlRes = await fetch('/api/crawl-links', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, maxPages }),
+        });
+        if (!crawlRes.ok) throw new Error(`Crawl failed: ${crawlRes.statusText}`);
+        const { urls } = await crawlRes.json() as { urls: string[] };
+
+        // Step 2: analyze all pages
+        setProgress({ stage: 'analyzing', current: 0, total: urls.length });
+        const analyzeRes = await fetch('/api/analyze-crawl', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, maxPages }),
+        });
+        if (!analyzeRes.ok) throw new Error(`Analysis failed: ${analyzeRes.statusText}`);
+        const arr: AnalysisResult[] = await analyzeRes.json();
         setResults(arr);
         setSelectedIndex(0);
+        setProgress({ stage: 'idle' });
       } else {
+        setProgress({ stage: 'analyzing', current: 0, total: 1 });
+        const response = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url }),
+        });
+        if (!response.ok) throw new Error(`Analysis failed: ${response.statusText}`);
         const single: AnalysisResult = await response.json();
         setResults([single]);
         setSelectedIndex(0);
+        setProgress({ stage: 'idle' });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -192,6 +213,23 @@ export function HomePage() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {(progress.stage !== 'idle') && (
+          <div className="mb-6">
+            {progress.stage === 'crawling' && (
+              <div className="text-sm text-gray-700">Crawling pages from <strong>{progress.url}</strong>…</div>
+            )}
+            {progress.stage === 'analyzing' && (
+              <div className="text-sm text-gray-700">Analyzing pages…</div>
+            )}
+            <div className="mt-2 h-2 w-full bg-gray-200 rounded">
+              <div
+                className={`h-2 rounded ${progress.stage === 'crawling' ? 'bg-yellow-500' : 'bg-blue-600'}`}
+                style={{ width: progress.stage === 'crawling' ? '30%' : '70%' }}
+              />
             </div>
           </div>
         )}
