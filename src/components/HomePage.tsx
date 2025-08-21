@@ -50,7 +50,7 @@ interface AnalysisResult {
 export function HomePage() {
   const [url, setUrl] = useState('');
   const [lytxKey, setLytxKey] = useState('');
-  const [crawl, setCrawl] = useState<boolean>(false);
+  const [crawl, setCrawl] = useState<boolean>(true);
   const [maxPages, setMaxPages] = useState<number>(5);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<AnalysisResult[] | null>(null);
@@ -243,7 +243,7 @@ export function HomePage() {
                     key={i}
                     type="button"
                     onClick={() => setSelectedIndex(i)}
-                    className={`text-left w-full border rounded-lg p-4 transition-colors ${
+                    className={`text-left w-full border rounded-lg p-4 transition-colors cursor-pointer ${
                       i === selectedIndex ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
                     }`}
                   >
