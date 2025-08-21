@@ -318,7 +318,24 @@ export class CloudflareBrowserService {
               retryCount++;
               continue;
             } else {
-              throw new Error(`Content blocked after ${maxRetries + 1} attempts: ${blockCheck.reason}`);
+              // Last-chance fallback to raw HTTP fetch
+              try {
+                console.warn(`[${requestId}] 🛟 Blocked by bot protection. Trying raw HTTP fallback...`);
+                const fallback = await fetchPageFallback(url);
+                const loadTime = Date.now() - startTime;
+                return {
+                  html: fallback.html,
+                  title: fallback.title,
+                  url: fallback.url,
+                  metadata: {
+                    viewport,
+                    loadTime,
+                    timestamp: new Date().toISOString(),
+                  },
+                } as PageContent;
+              } catch (finalErr) {
+                throw new Error(`Content blocked after ${maxRetries + 1} attempts: ${blockCheck.reason}`);
+              }
             }
           }
           
@@ -341,7 +358,24 @@ export class CloudflareBrowserService {
             await new Promise(resolve => setTimeout(resolve, retryDelay));
           } else {
             console.error(`[${requestId}] 💥 All navigation attempts failed for: ${url}`);
-            throw error;
+            // Final fallback: attempt raw HTTP fetch as last resort
+            try {
+              console.warn(`[${requestId}] 🛟 Falling back to raw HTTP fetch after browser failure...`);
+              const fallback = await fetchPageFallback(url);
+              const loadTime = Date.now() - startTime;
+              return {
+                html: fallback.html,
+                title: fallback.title,
+                url: fallback.url,
+                metadata: {
+                  viewport,
+                  loadTime,
+                  timestamp: new Date().toISOString(),
+                },
+              } as PageContent;
+            } catch (finalErr) {
+              throw error; // preserve original
+            }
           }
         }
       }
