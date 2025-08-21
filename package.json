@@ -20,7 +20,7 @@
     "@types/react": "^19.1.7",
     "@types/react-dom": "^19.1.6",
     "vibe-rules": "^0.3.85",
-    "wrangler": "^4.31.0"
+    "wrangler": "^4.32.0"
   },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.16",
