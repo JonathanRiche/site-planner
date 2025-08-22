@@ -1,6 +1,6 @@
 import { SiteAnalysisService } from '../lib/analysis-service';
 import { CloudflareBrowserService } from '../lib/browser-service';
-import { env } from 'cloudflare:workers';
+import { getDb, searches } from '../lib/db';
 
 import type { AppContext } from "@/worker";
 import type { RequestInfo } from "rwsdk/worker";
@@ -82,15 +82,12 @@ export default async function analyzeCrawlHandler({ request }: RequestInfo<any, 
 
     // Persist searches
     try {
-      const db = env.SITE_PLANNER_DB as D1Database;
-      await db.exec(`CREATE TABLE IF NOT EXISTS searches (
-        id TEXT PRIMARY KEY,
-        url TEXT NOT NULL,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-      );`);
-      const stmt = await db.prepare(`INSERT INTO searches (id, url) VALUES (?1, ?2)`);
+      const db = getDb();
       for (const r of results) {
-        await stmt.bind(r.analysisId, r.pageAnalysis.url).run();
+        await db.insert(searches).values({
+          id: r.analysisId,
+          url: r.pageAnalysis.url
+        });
       }
     } catch (dbErr) {
       console.warn('Failed to persist searches:', dbErr);

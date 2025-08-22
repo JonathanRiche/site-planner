@@ -16,7 +16,8 @@
 		{
 			"binding": "SITE_PLANNER_DB",
 			"database_name": "site_planner",
-			"database_id": "",
+			"database_id": "2d4da1df-70ec-4b13-ac4d-4289d4461177",
+			"migrations_dir": "src/lib/db/migrations"
 		}
 	],
 	"kv_namespaces": [

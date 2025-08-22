@@ -1,5 +1,5 @@
 import { SiteAnalysisService } from '../lib/analysis-service';
-import { env } from 'cloudflare:workers';
+import { getDb, searches } from '../lib/db';
 
 import type { AppContext } from "@/worker";
 import type { RequestInfo } from "rwsdk/worker";
@@ -42,13 +42,11 @@ export default async function analyzeHandler({ request }: RequestInfo<any, AppCo
     const result = await analysisService.analyzeSite(url);
     // Persist search
     try {
-      const db = env.SITE_PLANNER_DB as D1Database;
-      await db.exec(`CREATE TABLE IF NOT EXISTS searches (
-        id TEXT PRIMARY KEY,
-        url TEXT NOT NULL,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-      );`);
-      await db.prepare(`INSERT INTO searches (id, url) VALUES (?1, ?2)`).bind(result.analysisId, url).run();
+      const db = getDb();
+      await db.insert(searches).values({
+        id: result.analysisId,
+        url: url
+      });
     } catch (dbErr) {
       console.warn('Failed to persist search:', dbErr);
     }

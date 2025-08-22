@@ -21,8 +21,6 @@
     "@types/bun": "latest",
     "@types/react": "^19.1.7",
     "@types/react-dom": "^19.1.6",
-    "drizzle-kit": "^0.31.4",
-    "drizzle-orm": "^0.44.4",
     "vibe-rules": "^0.3.85",
     "wrangler": "^4.32.0"
   },
