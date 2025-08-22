@@ -60,85 +60,7 @@ function isBlockedContent(html: string, title: string): { isBlocked: boolean; re
   return { isBlocked: false };
 }
 
-// Enhanced fallback for development when browser rendering isn't available
-async function fetchPageFallback(url: string, retryCount = 0): Promise<{ html: string; title: string; url: string }> {
-  const maxRetries = 3;
-  const userAgent = getRandomUserAgent();
-  const fallbackId = Math.random().toString(36).substring(7);
-  
-  console.log(`🔄 [${fallbackId}] Using fallback fetch method for: ${url} (attempt ${retryCount + 1}/${maxRetries + 1})`);
-  console.log(`🎭 [${fallbackId}] User agent: ${userAgent.substring(0, 50)}...`);
-  
-  try {
-    // Add delay between retries to avoid rate limiting
-    if (retryCount > 0) {
-      const delay = Math.min(1000 * Math.pow(2, retryCount), 10000); // Exponential backoff up to 10s
-      console.log(`⏱️ [${fallbackId}] Waiting ${delay}ms before retry...`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-    
-    console.log(`🌐 [${fallbackId}] Making HTTP request...`);
-    const fetchStartTime = Date.now();
-    
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': userAgent,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Cache-Control': 'max-age=0',
-      },
-    });
 
-    console.log(`📡 [${fallbackId}] Response received in ${Date.now() - fetchStartTime}ms:`, {
-      status: response.status,
-      statusText: response.statusText,
-      contentType: response.headers.get('content-type'),
-      contentLength: response.headers.get('content-length')
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    const html = await response.text();
-    console.log(`📄 [${fallbackId}] HTML content received: ${html.length} characters`);
-    
-    // Extract title
-    const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
-    const title = titleMatch ? titleMatch[1].trim() : 'No title found';
-    
-    // Check if content is blocked
-    const blockCheck = isBlockedContent(html, title);
-    if (blockCheck.isBlocked) {
-      console.warn(`Content blocked: ${blockCheck.reason}`);
-      
-      // Retry with different user agent if we have retries left
-      if (retryCount < maxRetries) {
-        console.log(`Retrying with different user agent...`);
-        return await fetchPageFallback(url, retryCount + 1);
-      }
-      
-      throw new Error(`Content blocked by bot protection: ${blockCheck.reason}`);
-    }
-
-    return { html, title, url };
-  } catch (error) {
-    if (retryCount < maxRetries) {
-      console.warn(`Fetch failed (attempt ${retryCount + 1}), retrying...`, error);
-      return await fetchPageFallback(url, retryCount + 1);
-    }
-    
-    console.error('All fallback fetch attempts failed:', error);
-    throw error;
-  }
-}
 
 export class CloudflareBrowserService {
   
@@ -208,24 +130,8 @@ export class CloudflareBrowserService {
       });
       
       if (!env.MYBROWSER) {
-        console.warn(`[${requestId}] ⚠️ MYBROWSER binding not available, using fallback fetch method`);
-        
-        // Use simple fetch fallback for development
-        const fallbackResult = await fetchPageFallback(url);
-        const loadTime = Date.now() - startTime;
-        
-        console.log(`[${requestId}] ✅ Fallback fetch completed in ${loadTime}ms`);
-        
-        return {
-          html: fallbackResult.html,
-          title: fallbackResult.title,
-          url: fallbackResult.url,
-          metadata: {
-            viewport,
-            loadTime,
-            timestamp: new Date().toISOString(),
-          },
-        };
+        console.error(`[${requestId}] ❌ MYBROWSER binding not available`);
+        throw new Error('MYBROWSER binding not available - browser rendering service unavailable');
       }
       
       // Launch browser with Cloudflare's Puppeteer
@@ -318,24 +224,7 @@ export class CloudflareBrowserService {
               retryCount++;
               continue;
             } else {
-              // Last-chance fallback to raw HTTP fetch
-              try {
-                console.warn(`[${requestId}] 🛟 Blocked by bot protection. Trying raw HTTP fallback...`);
-                const fallback = await fetchPageFallback(url);
-                const loadTime = Date.now() - startTime;
-                return {
-                  html: fallback.html,
-                  title: fallback.title,
-                  url: fallback.url,
-                  metadata: {
-                    viewport,
-                    loadTime,
-                    timestamp: new Date().toISOString(),
-                  },
-                } as PageContent;
-              } catch (finalErr) {
-                throw new Error(`Content blocked after ${maxRetries + 1} attempts: ${blockCheck.reason}`);
-              }
+              throw new Error(`Content blocked after ${maxRetries + 1} attempts: ${blockCheck.reason}`);
             }
           }
           
@@ -358,24 +247,7 @@ export class CloudflareBrowserService {
             await new Promise(resolve => setTimeout(resolve, retryDelay));
           } else {
             console.error(`[${requestId}] 💥 All navigation attempts failed for: ${url}`);
-            // Final fallback: attempt raw HTTP fetch as last resort
-            try {
-              console.warn(`[${requestId}] 🛟 Falling back to raw HTTP fetch after browser failure...`);
-              const fallback = await fetchPageFallback(url);
-              const loadTime = Date.now() - startTime;
-              return {
-                html: fallback.html,
-                title: fallback.title,
-                url: fallback.url,
-                metadata: {
-                  viewport,
-                  loadTime,
-                  timestamp: new Date().toISOString(),
-                },
-              } as PageContent;
-            } catch (finalErr) {
-              throw error; // preserve original
-            }
+            throw error;
           }
         }
       }
