@@ -2,6 +2,7 @@ import { generateObject } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { CloudflareBrowserService } from './browser-service';
 import { SiteAnalysisResult, PageAnalysis, LYTXRecommendation, PageAnalysisSchema, LYTXRecommendationSchema } from './types';
+import { DEFAULT_MODEL } from './defaults';
 
 const openai = createOpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -73,7 +74,7 @@ export class SiteAnalysisService {
         console.log(`🔎 [${analysisId}] Detected existing LYTX script tag in HTML.`);
       }
       const pageAnalysisResult = await generateObject({
-        model: openai('gpt-4o-mini'),
+        model: openai(DEFAULT_MODEL),
         schema: PageAnalysisSchema,
         prompt: `Analyze this webpage HTML: ${pageContent.url}
 
@@ -103,7 +104,7 @@ LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX"
       // Step 3: Generate LYTX recommendations
       console.log(`🏷️ [${analysisId}] Step 3: Generating LYTX recommendations...`);
       const recommendationsResult = await generateObject({
-        model: openai('gpt-4o-mini'),
+        model: openai(DEFAULT_MODEL),
         schema: LYTXRecommendationSchema,
         prompt: `You are a LYTX analytics expert. Generate LYTX implementation recommendations based on this page analysis.
 
@@ -239,7 +240,7 @@ Focus on conversion impact and provide clear implementation guidance.`,
       console.log(`🤖 [${analysisId}] Analyzing page structure with AI (provided HTML)...`);
       const lytxDetected = hasLytxScriptTag(pageContent.html);
       const pageAnalysisResult = await generateObject({
-        model: openai('gpt-4o-mini'),
+        model: openai(DEFAULT_MODEL),
         schema: PageAnalysisSchema,
         prompt: `Analyze this webpage HTML: ${pageContent.url}
 
@@ -256,7 +257,7 @@ LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX"
 
       // Recommendations
       const recommendationsResult = await generateObject({
-        model: openai('gpt-4o-mini'),
+        model: openai(DEFAULT_MODEL),
         schema: LYTXRecommendationSchema,
         prompt: `You are a LYTX analytics expert. Generate LYTX implementation recommendations based on this page analysis.
 
