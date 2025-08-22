@@ -10,7 +10,8 @@
 		"binding": "ASSETS"
 	},
 	"browser": {
-		"binding": "MYBROWSER"
+		"binding": "MYBROWSER",
+		"experimental_remote": true
 	},
 	"d1_databases": [
 		{
