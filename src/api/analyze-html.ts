@@ -1,8 +1,9 @@
 import { SiteAnalysisService } from '../lib/analysis-service';
 import type { AppContext } from "@/worker";
 import type { RequestInfo } from "rwsdk/worker";
+import { env } from 'cloudflare:workers';
 
-export default async function analyzeHtmlHandler({ request, env }: RequestInfo<any, AppContext>) {
+export default async function analyzeHtmlHandler({ request }: RequestInfo<any, AppContext>) {
   if (request.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,

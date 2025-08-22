@@ -1,8 +1,9 @@
 import { SiteAnalysisService } from '../lib/analysis-service';
+import { env } from 'cloudflare:workers';
 
 import type { AppContext } from "@/worker";
 import type { RequestInfo } from "rwsdk/worker";
-export default async function analyzeHandler({ request, env }: RequestInfo<any, AppContext>) {
+export default async function analyzeHandler({ request }: RequestInfo<any, AppContext>) {
   // Only handle POST requests for this endpoint
   if (request.method !== 'POST') {
     return new Response(

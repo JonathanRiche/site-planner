@@ -1,5 +1,6 @@
 import { SiteAnalysisService } from '../lib/analysis-service';
 import { CloudflareBrowserService } from '../lib/browser-service';
+import { env } from 'cloudflare:workers';
 
 import type { AppContext } from "@/worker";
 import type { RequestInfo } from "rwsdk/worker";
@@ -44,7 +45,7 @@ function extractInternalLinks(html: string, baseUrl: string, limit: number): str
   return result;
 }
 
-export default async function analyzeCrawlHandler({ request, env }: RequestInfo<any, AppContext>) {
+export default async function analyzeCrawlHandler({ request }: RequestInfo<any, AppContext>) {
   if (request.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
