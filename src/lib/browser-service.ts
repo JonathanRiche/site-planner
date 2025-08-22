@@ -13,6 +13,11 @@ export interface PageContent {
   };
 }
 
+const DEFAULT_BROWSER_OPTIONS = {
+  timeout: 5000,
+  waitFor: 1000,
+} as const;
+
 // Enhanced user agents to rotate through
 const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -29,7 +34,7 @@ function getRandomUserAgent(): string {
 function isBlockedContent(html: string, title: string): { isBlocked: boolean; reason?: string } {
   const lowerHtml = html.toLowerCase();
   const lowerTitle = title.toLowerCase();
-  
+
   // Common bot detection indicators
   const blockIndicators = [
     { pattern: /attention required.*cloudflare/i, reason: 'Cloudflare bot protection' },
@@ -41,33 +46,33 @@ function isBlockedContent(html: string, title: string): { isBlocked: boolean; re
     { pattern: /bot detection/i, reason: 'Bot detection' },
     { pattern: /rate limit/i, reason: 'Rate limited' },
   ];
-  
+
   for (const indicator of blockIndicators) {
     if (indicator.pattern.test(lowerHtml) || indicator.pattern.test(lowerTitle)) {
       return { isBlocked: true, reason: indicator.reason };
     }
   }
-  
+
   // Check if page content is suspiciously short
   const bodyMatch = html.match(/<body[^>]*>(.*?)<\/body>/is);
   const bodyContent = bodyMatch ? bodyMatch[1] : html;
   const textContent = bodyContent.replace(/<[^>]+>/g, '').trim();
-  
+
   if (textContent.length < 100) {
     return { isBlocked: true, reason: 'Suspiciously short content' };
   }
-  
+
   return { isBlocked: false };
 }
 
 
 
 export class CloudflareBrowserService {
-  
+
   // Method to clear cached results for a URL (useful when blocked content is detected)
   async clearCache(url: string, options: any = {}): Promise<void> {
     if (!env.SITE_ANALYSIS_CACHE) return;
-    
+
     const cacheKey = `page:${url}:${JSON.stringify(options)}`;
     try {
       await env.SITE_ANALYSIS_CACHE.delete(cacheKey);
@@ -86,7 +91,7 @@ export class CloudflareBrowserService {
     const {
       takeScreenshot = false,
       viewport = { width: 1280, height: 720 },
-      waitFor = 2000,
+      waitFor = DEFAULT_BROWSER_OPTIONS.waitFor,
       useCache = true,
     } = options;
 
@@ -128,12 +133,12 @@ export class CloudflareBrowserService {
         hasCACHE: !!env.SITE_ANALYSIS_CACHE,
         envKeys: Object.keys(env || {}).length
       });
-      
+
       if (!env.MYBROWSER) {
         console.error(`[${requestId}] ❌ MYBROWSER binding not available`);
         throw new Error('MYBROWSER binding not available - browser rendering service unavailable');
       }
-      
+
       // Launch browser with Cloudflare's Puppeteer
       console.log(`[${requestId}] 🌐 Launching Puppeteer browser...`);
       const browserStartTime = Date.now();
@@ -150,7 +155,7 @@ export class CloudflareBrowserService {
       const userAgent = getRandomUserAgent();
       console.log(`[${requestId}] 🎭 Setting user agent: ${userAgent.substring(0, 50)}...`);
       await page.setUserAgent(userAgent);
-      
+
       // Set additional headers to mimic real browser behavior
       const headers = {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -172,16 +177,16 @@ export class CloudflareBrowserService {
       let title: string = '';
       let retryCount = 0;
       const maxRetries = 2;
-      
+
       while (retryCount <= maxRetries) {
         const attemptStartTime = Date.now();
         console.log(`[${requestId}] 🎯 Navigation attempt ${retryCount + 1}/${maxRetries + 1}`);
-        
+
         try {
           console.log(`[${requestId}] ⏳ Calling page.goto() with 30s timeout...`);
-          await page.goto(url, { 
+          await page.goto(url, {
             waitUntil: 'domcontentloaded',
-            timeout: 30000 
+            timeout: DEFAULT_BROWSER_OPTIONS.timeout
           });
           console.log(`[${requestId}] ✅ Navigation completed in ${Date.now() - attemptStartTime}ms`);
 
@@ -202,7 +207,7 @@ export class CloudflareBrowserService {
             htmlLength: html.length,
             title: title.substring(0, 100),
           });
-          
+
           // Check if we got blocked content
           console.log(`[${requestId}] 🔍 Checking for bot detection/blocking...`);
           const blockCheck = isBlockedContent(html, title);
@@ -211,12 +216,12 @@ export class CloudflareBrowserService {
               titleSnippet: title.substring(0, 100),
               htmlSnippet: html.substring(0, 200)
             });
-            
+
             if (retryCount < maxRetries) {
               const retryDelay = 5000 + Math.random() * 5000; // 5-10s random delay
               console.log(`[${requestId}] 🔄 Waiting ${Math.round(retryDelay)}ms before retry...`);
               await new Promise(resolve => setTimeout(resolve, retryDelay));
-              
+
               // Try with a different user agent
               const newUserAgent = getRandomUserAgent();
               console.log(`[${requestId}] 🎭 Switching to new user agent: ${newUserAgent.substring(0, 50)}...`);
@@ -227,11 +232,11 @@ export class CloudflareBrowserService {
               throw new Error(`Content blocked after ${maxRetries + 1} attempts: ${blockCheck.reason}`);
             }
           }
-          
+
           // Success - break out of retry loop
           console.log(`[${requestId}] 🎉 Successfully extracted content (${html.length} chars)`);
           break;
-          
+
         } catch (error) {
           console.error(`[${requestId}] ❌ Navigation attempt ${retryCount + 1} failed after ${Date.now() - attemptStartTime}ms:`, {
             error: error instanceof Error ? error.message : String(error),
@@ -239,7 +244,7 @@ export class CloudflareBrowserService {
             url,
             retryCount
           });
-          
+
           if (retryCount < maxRetries) {
             const retryDelay = 2000;
             console.log(`[${requestId}] ⏱️ Waiting ${retryDelay}ms before retry...`);
@@ -334,15 +339,15 @@ export class CloudflareBrowserService {
     } = options;
 
     console.log('Taking screenshot for:', url);
-    
+
     try {
       const browser = await puppeteer.launch(env.MYBROWSER);
       const page = await browser.newPage();
 
       await page.setViewport(viewport);
-      await page.goto(url, { 
+      await page.goto(url, {
         waitUntil: 'domcontentloaded',
-        timeout: 30000 
+        timeout: 30000
       });
 
       // Wait for page to fully load
@@ -364,14 +369,14 @@ export class CloudflareBrowserService {
 
   async extractStructuredData(url: string, selectors: Record<string, string>): Promise<Record<string, any>> {
     console.log('Extracting structured data for:', url);
-    
+
     try {
       const browser = await puppeteer.launch(env.MYBROWSER);
       const page = await browser.newPage();
 
-      await page.goto(url, { 
+      await page.goto(url, {
         waitUntil: 'domcontentloaded',
-        timeout: 30000 
+        timeout: 30000
       });
 
       // Wait for dynamic content
@@ -379,7 +384,7 @@ export class CloudflareBrowserService {
 
       // Extract data using provided selectors
       const data: Record<string, any> = {};
-      
+
       for (const [key, selector] of Object.entries(selectors)) {
         try {
           const element = await page.$(selector);

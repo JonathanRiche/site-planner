@@ -10,7 +10,7 @@ async function main() {
   const service = new CloudflareBrowserService();
   const startedAt = Date.now();
   try {
-    const page = await service.renderPage(url, { takeScreenshot: false, useCache: false, waitFor: 2000 });
+    const page = await service.renderPage(url, { takeScreenshot: false, useCache: false });
     const ms = Date.now() - startedAt;
     console.log('Render completed:', { url: page.url, title: page.title, htmlLength: page.html.length, timeMs: ms });
     const lower = page.html.toLowerCase();
