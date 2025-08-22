@@ -12,6 +12,13 @@
 	"browser": {
 		"binding": "MYBROWSER"
 	},
+	"d1_databases": [
+		{
+			"binding": "SITE_PLANNER_DB",
+			"database_name": "site_planner",
+			"database_id": "",
+		}
+	],
 	"kv_namespaces": [
 		{
 			"binding": "SITE_ANALYSIS_CACHE",

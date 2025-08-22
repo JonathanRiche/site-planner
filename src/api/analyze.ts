@@ -2,7 +2,7 @@ import { SiteAnalysisService } from '../lib/analysis-service';
 
 import type { AppContext } from "@/worker";
 import type { RequestInfo } from "rwsdk/worker";
-export default async function analyzeHandler({ request }: RequestInfo<any, AppContext>) {
+export default async function analyzeHandler({ request, env }: RequestInfo<any, AppContext>) {
   // Only handle POST requests for this endpoint
   if (request.method !== 'POST') {
     return new Response(
@@ -39,6 +39,18 @@ export default async function analyzeHandler({ request }: RequestInfo<any, AppCo
     }
 
     const result = await analysisService.analyzeSite(url);
+    // Persist search
+    try {
+      const db = env.SITE_PLANNER_DB as D1Database;
+      await db.exec(`CREATE TABLE IF NOT EXISTS searches (
+        id TEXT PRIMARY KEY,
+        url TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );`);
+      await db.prepare(`INSERT INTO searches (id, url) VALUES (?1, ?2)`).bind(result.analysisId, url).run();
+    } catch (dbErr) {
+      console.warn('Failed to persist search:', dbErr);
+    }
 
     return new Response(JSON.stringify(result), {
       status: 200,

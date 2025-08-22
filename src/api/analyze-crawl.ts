@@ -44,7 +44,7 @@ function extractInternalLinks(html: string, baseUrl: string, limit: number): str
   return result;
 }
 
-export default async function analyzeCrawlHandler({ request }: RequestInfo<any, AppContext>) {
+export default async function analyzeCrawlHandler({ request, env }: RequestInfo<any, AppContext>) {
   if (request.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
@@ -78,6 +78,22 @@ export default async function analyzeCrawlHandler({ request }: RequestInfo<any, 
 
     const analysisService = new SiteAnalysisService();
     const results = await analysisService.analyzeMultiplePages(urlsToAnalyze);
+
+    // Persist searches
+    try {
+      const db = env.SITE_PLANNER_DB as D1Database;
+      await db.exec(`CREATE TABLE IF NOT EXISTS searches (
+        id TEXT PRIMARY KEY,
+        url TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );`);
+      const stmt = await db.prepare(`INSERT INTO searches (id, url) VALUES (?1, ?2)`);
+      for (const r of results) {
+        await stmt.bind(r.analysisId, r.pageAnalysis.url).run();
+      }
+    } catch (dbErr) {
+      console.warn('Failed to persist searches:', dbErr);
+    }
 
     return new Response(JSON.stringify(results), {
       status: 200,
