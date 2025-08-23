@@ -70,71 +70,36 @@ export function HomePage() {
 
     setLoading(true);
     setError(null);
-    setResults(null);
-    setProgress({ stage: 'idle' });
 
     try {
-      if (crawl) {
-        setProgress({ stage: 'crawling', url });
-        // Step 1: crawl links first for feedback
-        const crawlRes = await fetch('/api/crawl-links', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url, maxPages }),
-        });
-        if (!crawlRes.ok) {
-          let detail = crawlRes.statusText;
-          try {
-            const data = await crawlRes.json();
-            if (data?.error) detail = data.error;
-          } catch {}
-          throw new Error(`Crawl failed: ${detail}`);
-        }
-        const { urls, allUrls } = await crawlRes.json() as { urls: string[]; allUrls: string[] };
-        setProgress({ stage: 'crawling', url, allUrls, selectedUrls: urls });
-
-        // Step 2: analyze all pages
-        setProgress({ stage: 'analyzing', current: 0, total: urls.length });
-        const analyzeRes = await fetch('/api/analyze-crawl', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url, maxPages }),
-        });
-        if (!analyzeRes.ok) {
-          let detail = analyzeRes.statusText;
-          try {
-            const data = await analyzeRes.json();
-            if (data?.error) detail = data.error;
-          } catch {}
-          throw new Error(`Analysis failed: ${detail}`);
-        }
-        const arr: AnalysisResult[] = await analyzeRes.json();
-        setResults(arr);
-        setSelectedIndex(0);
-        setProgress({ stage: 'idle' });
-      } else {
-        setProgress({ stage: 'analyzing', current: 0, total: 1 });
-        const response = await fetch('/api/analyze', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url }),
-        });
-        if (!response.ok) {
-          let detail = response.statusText;
-          try {
-            const data = await response.json();
-            if (data?.error) detail = data.error;
-          } catch {}
-          throw new Error(`Analysis failed: ${detail}`);
-        }
-        const single: AnalysisResult = await response.json();
-        setResults([single]);
-        setSelectedIndex(0);
-        setProgress({ stage: 'idle' });
+      // Create session and redirect immediately
+      const sessionRes = await fetch('/api/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          url, 
+          crawl, 
+          maxPages,
+          concurrency: 3 // Use configurable concurrency
+        }),
+      });
+      
+      if (!sessionRes.ok) {
+        let detail = sessionRes.statusText;
+        try {
+          const data = await sessionRes.json() as any;
+          if (data?.error) detail = data.error;
+        } catch {}
+        throw new Error(`Session creation failed: ${detail}`);
       }
+      
+      const { sessionId } = await sessionRes.json() as { sessionId: string };
+      
+      // Redirect to session page immediately
+      window.location.href = `/session/${sessionId}`;
+      
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
-    } finally {
       setLoading(false);
     }
   };
@@ -250,7 +215,7 @@ export function HomePage() {
                   });
                   if (!res.ok) {
                     let detail = res.statusText;
-                    try { const data = await res.json(); if (data?.error) detail = data.error; } catch {}
+                    try { const data = await res.json() as any; if (data?.error) detail = data.error; } catch {}
                     throw new Error(`Analyze HTML failed: ${detail}`);
                   }
                   const single: AnalysisResult = await res.json();
