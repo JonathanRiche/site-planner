@@ -1,0 +1,39 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"compatibility_date": "2025-08-15",
+	"compatibility_flags": [
+		"nodejs_compat",
+	],
+	"main": "src/worker.tsx",
+	"name": "site_planner",
+	"assets": {
+		"binding": "ASSETS"
+	},
+	"browser": {
+		"binding": "MYBROWSER",
+		"experimental_remote": true
+	},
+	"d1_databases": [
+		{
+			"binding": "SITE_PLANNER_DB",
+			"database_name": "site_planner",
+			"database_id": "REPLACE_WITH_YOURS",
+			"migrations_dir": "src/lib/db/migrations"
+		}
+	],
+	"kv_namespaces": [
+		{
+			"binding": "SITE_ANALYSIS_CACHE",
+			"id": "REPLACE_WITH_YOURS"
+		}
+	],
+	"observability": {
+		"enabled": true,
+		"logs": {
+			"enabled": true
+		}
+	},
+	"vars": {
+		"NODE_ENV": "development"
+	}
+}

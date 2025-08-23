@@ -9,8 +9,6 @@ dist
 # code coverage
 coverage
 *.lcov
-wrangler.example.jsonc
-wrangler_example.jsonc
 wrangler.jsonc
 # logs
 logs
