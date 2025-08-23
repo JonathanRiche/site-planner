@@ -1,6 +1,6 @@
 import { generateObject } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
-import { CloudflareBrowserService } from './browser-service';
+import { OptimizedCloudflareBrowserService } from './optimized-browser-service';
 import { SiteAnalysisResult, PageAnalysis, LYTXRecommendation, PageAnalysisSchema, LYTXRecommendationSchema } from './types';
 import { DEFAULT_MODEL } from './defaults';
 
@@ -18,10 +18,10 @@ function hasLytxScriptTag(html: string): boolean {
 }
 
 export class SiteAnalysisService {
-  private browserService: CloudflareBrowserService;
+  private browserService: OptimizedCloudflareBrowserService;
 
   constructor() {
-    this.browserService = new CloudflareBrowserService();
+    this.browserService = new OptimizedCloudflareBrowserService();
   }
 
   async analyzeSite(url: string): Promise<SiteAnalysisResult> {
@@ -42,18 +42,22 @@ export class SiteAnalysisService {
         pageContent = await this.browserService.renderPage(url, {
           takeScreenshot: false,
           useCache: true,
+          blockResources: true,
+          optimizeForContent: true,
         });
       } catch (error) {
         // If we get blocked content error, clear cache and retry once without cache
         if (error instanceof Error && error.message.includes('blocked')) {
           console.warn(`🚫 [${analysisId}] Got blocked content, clearing cache and retrying...`);
-          await this.browserService.clearCache(url, { takeScreenshot: false, useCache: true });
+          await this.browserService.clearCache(url, { takeScreenshot: false, useCache: true, blockResources: true, optimizeForContent: true });
           
           // Retry without cache
           console.log(`🔄 [${analysisId}] Retrying without cache...`);
           pageContent = await this.browserService.renderPage(url, {
             takeScreenshot: false,
             useCache: false,
+            blockResources: true,
+            optimizeForContent: true,
           });
         } else {
           console.error(`💥 [${analysisId}] Browser service error:`, error);
