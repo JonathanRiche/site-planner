@@ -96,9 +96,10 @@ async function createSession(request: Request): Promise<Response> {
     console.log(`📝 Created session ${sessionId} for URL: ${siteUrl}`);
     
     // Start analysis in background (fire and forget)
-    // We'll use the existing analyze-crawl logic but update the session as we go
+    console.log(`🚀 Starting background analysis for session ${sessionId}...`);
     startBackgroundAnalysis(sessionId, sessionData).catch(error => {
-      console.error(`Background analysis failed for session ${sessionId}:`, error);
+      console.error(`💥 Background analysis failed for session ${sessionId}:`, error);
+      console.error(`Stack trace:`, error.stack);
     });
     
     return new Response(JSON.stringify({
@@ -212,19 +213,29 @@ async function updateSession(sessionId: string, request: Request): Promise<Respo
 }
 
 async function startBackgroundAnalysis(sessionId: string, sessionData: SessionData) {
+  console.log(`⚡ Background analysis starting for session ${sessionId}, URL: ${sessionData.url}`);
+  
   const updateSession = async (updates: Partial<SessionData>) => {
     try {
-      if (!env.SITE_ANALYSIS_CACHE) return;
+      if (!env.SITE_ANALYSIS_CACHE) {
+        console.error(`❌ No SITE_ANALYSIS_CACHE available for session ${sessionId}`);
+        return;
+      }
       
       const currentData = await env.SITE_ANALYSIS_CACHE.get(`session:${sessionId}`);
-      if (!currentData) return;
+      if (!currentData) {
+        console.error(`❌ Session ${sessionId} not found in cache`);
+        return;
+      }
       
       const data = JSON.parse(currentData) as SessionData;
       const updatedData = {
         ...data,
         ...updates,
         updatedAt: new Date().toISOString()
-      };
+      } as SessionData;
+      
+      console.log(`📝 Updating session ${sessionId}:`, { status: updatedData.status, stage: updatedData.progress?.stage });
       
       await env.SITE_ANALYSIS_CACHE.put(
         `session:${sessionId}`, 
@@ -232,14 +243,16 @@ async function startBackgroundAnalysis(sessionId: string, sessionData: SessionDa
         { expirationTtl: 60 * 60 * 24 }
       );
     } catch (error) {
-      console.error(`Failed to update session ${sessionId}:`, error);
+      console.error(`💥 Failed to update session ${sessionId}:`, error);
     }
   };
-  
+   
   try {
     // Import the analysis service dynamically to avoid circular dependencies
+    console.log(`📦 Importing analysis services for session ${sessionId}...`);
     const { SiteAnalysisService } = await import('../lib/analysis-service');
     const { OptimizedCloudflareBrowserService } = await import('../lib/optimized-browser-service');
+    console.log(`✅ Services imported successfully for session ${sessionId}`);
     
     if (sessionData.crawl) {
       // Update status to crawling
