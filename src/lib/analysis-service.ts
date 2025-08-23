@@ -77,7 +77,9 @@ export class SiteAnalysisService {
       if (lytxDetected) {
         console.log(`🔎 [${analysisId}] Detected existing LYTX script tag in HTML.`);
       }
-      const pageAnalysisResult = await generateObject({
+      
+      // Start page analysis (will run in parallel with recommendations)
+      const pageAnalysisPromise = generateObject({
         model: openai(DEFAULT_MODEL),
         schema: PageAnalysisSchema,
         prompt: `Analyze this webpage HTML: ${pageContent.url}
@@ -88,6 +90,42 @@ ${pageContent.html.substring(0, 8000)} ${pageContent.html.length > 8000 ? '... (
 LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX" in analytics array' : 'No LYTX script detected'}`,
       });
 
+      // Step 3: Generate LYTX recommendations in parallel
+      console.log(`🏷️ [${analysisId}] Step 3: Generating LYTX recommendations in parallel...`);
+      
+      // This will create a placeholder analysis for the recommendations prompt
+      const basicPageData = {
+        title: pageContent.title || 'Unknown Page',
+        url: pageContent.url,
+        hasLytx: lytxDetected
+      };
+      
+      const recommendationsPromise = generateObject({
+        model: openai(DEFAULT_MODEL),
+        schema: LYTXRecommendationSchema,
+        prompt: `You are a LYTX analytics expert. Generate LYTX implementation recommendations for this webpage.
+
+IMPORTANT IMPLEMENTATION RULES:
+1) The core tag MUST use: <script defer data-domain="<domain>" src="https://lytx.io/lytx.js?account=<ACCOUNT>"></script>
+2) For custom events, ALWAYS use: window.lytxApi.event('<ACCOUNT>', 'web', '<event_name>')
+3) Do NOT use 'lytrack', 'analytics.lytx.io', or other vendors. Use only LYTX patterns above.
+4) Provide minimal, copy-pasteable code that matches these rules.
+
+Page Info:
+- URL: ${basicPageData.url}
+- Title: ${basicPageData.title}
+- LYTX Detection: ${lytxDetected ? 'LYTX already installed - acknowledge in tagPlacements and avoid duplicating core tag' : 'LYTX not detected - include core tag placement'}
+
+Focus on conversion impact and provide clear implementation guidance.`,
+      });
+
+      // Wait for both AI calls to complete in parallel
+      console.log(`⏳ [${analysisId}] Waiting for parallel AI analysis to complete...`);
+      const [pageAnalysisResult, recommendationsResult] = await Promise.all([
+        pageAnalysisPromise,
+        recommendationsPromise
+      ]);
+      
       // Extract structured data from AI response
       console.log(`📊 [${analysisId}] Processing structured analysis response...`);
       
@@ -105,26 +143,7 @@ LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX"
         analyticsCount: pageAnalysis.technicalStack.analytics.length
       });
 
-      // Step 3: Generate LYTX recommendations
-      console.log(`🏷️ [${analysisId}] Step 3: Generating LYTX recommendations...`);
-      const recommendationsResult = await generateObject({
-        model: openai(DEFAULT_MODEL),
-        schema: LYTXRecommendationSchema,
-        prompt: `You are a LYTX analytics expert. Generate LYTX implementation recommendations based on this page analysis.
-
-IMPORTANT IMPLEMENTATION RULES:
-1) The core tag MUST use: <script defer data-domain="<domain>" src="https://lytx.io/lytx.js?account=<ACCOUNT>"></script>
-2) For custom events, ALWAYS use: window.lytxApi.event('<ACCOUNT>', 'web', '<event_name>')
-3) Do NOT use 'lytrack', 'analytics.lytx.io', or other vendors. Use only LYTX patterns above.
-4) Provide minimal, copy-pasteable code that matches these rules.
-
-Page Analysis Data:
-${JSON.stringify(pageAnalysis, null, 2)}
-
-LYTX Detection: ${pageAnalysis.technicalStack.analytics.includes('LYTX') ? 'LYTX already installed - acknowledge in tagPlacements and avoid duplicating core tag' : 'LYTX not detected - include core tag placement'}
-
-Focus on conversion impact and provide clear implementation guidance.`,
-      });
+      // (LYTX recommendations are now generated in parallel above)
 
       // Extract structured recommendations from AI response
       console.log(`📋 [${analysisId}] Processing LYTX recommendations...`);

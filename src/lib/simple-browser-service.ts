@@ -347,6 +347,9 @@ export class SimpleCloudflareBrowserService {
       // IMPORTANT: Disconnect instead of close to allow reuse
       console.log(`[${requestId}] 🔌 Disconnecting from browser session (keeping alive for reuse)...`);
       browser.disconnect();
+      
+      // Give a small delay to ensure connection is fully released
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       const loadTime = Date.now() - startTime;
       const result: PageContent = {
