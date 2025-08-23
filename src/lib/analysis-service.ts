@@ -37,33 +37,12 @@ export class SiteAnalysisService {
       // Step 1: Fetch the webpage HTML using Cloudflare Browser Rendering
       console.log(`🌐 [${analysisId}] Step 1: Fetching HTML content...`);
       
-      let pageContent;
-      try {
-        pageContent = await this.browserService.renderPage(url, {
-          takeScreenshot: false,
-          useCache: true,
-          blockResources: true,
-          optimizeForContent: true,
-        });
-      } catch (error) {
-        // If we get blocked content error, clear cache and retry once without cache
-        if (error instanceof Error && error.message.includes('blocked')) {
-          console.warn(`🚫 [${analysisId}] Got blocked content, clearing cache and retrying...`);
-          await this.browserService.clearCache(url, { takeScreenshot: false, useCache: true, blockResources: true, optimizeForContent: true });
-          
-          // Retry without cache
-          console.log(`🔄 [${analysisId}] Retrying without cache...`);
-          pageContent = await this.browserService.renderPage(url, {
-            takeScreenshot: false,
-            useCache: false,
-            blockResources: true,
-            optimizeForContent: true,
-          });
-        } else {
-          console.error(`💥 [${analysisId}] Browser service error:`, error);
-          throw error;
-        }
-      }
+      const pageContent = await this.browserService.renderPage(url, {
+        takeScreenshot: false,
+        useCache: true,
+        blockResources: true,
+        optimizeForContent: true,
+      });
       
       console.log(`✅ [${analysisId}] HTML content fetched successfully`, {
         htmlLength: pageContent.html.length,

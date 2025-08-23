@@ -150,23 +150,21 @@ export class SimpleCloudflareBrowserService {
           })));
         }
 
-        // Filter to available sessions (no active connection)
-        const freeSessions = availableSessions.filter(s => !s.connectionId);
-        console.log(`[${requestId}] 📊 Found ${freeSessions.length} available sessions for reuse`);
-        
-        if (freeSessions.length > 0) {
-          // Use the first available session (they should all be disconnected)
-          const sessionToReuse = freeSessions[0];
-          
-          try {
-            console.log(`[${requestId}] ♻️ Attempting to connect to session: ${sessionToReuse.sessionId}`);
-            browser = await puppeteer.connect(env.MYBROWSER, sessionToReuse.sessionId);
-            sessionId = sessionToReuse.sessionId;
-            isReusedSession = true;
-            console.log(`[${requestId}] ✅ Successfully reusing session: ${sessionId}`);
-          } catch (connectError) {
-            console.warn(`[${requestId}] ⚠️ Failed to connect to session ${sessionToReuse.sessionId}:`, connectError);
-            // Fall through to create new session
+        // Try to reuse any session - connectionId might persist after disconnect
+        if (availableSessions.length > 0) {
+          // Try each session until we find one that works
+          for (const sessionCandidate of availableSessions) {
+            try {
+              console.log(`[${requestId}] ♻️ Attempting to connect to session: ${sessionCandidate.sessionId} (connectionId: ${sessionCandidate.connectionId || 'none'})`);
+              browser = await puppeteer.connect(env.MYBROWSER, sessionCandidate.sessionId);
+              sessionId = sessionCandidate.sessionId;
+              isReusedSession = true;
+              console.log(`[${requestId}] ✅ Successfully reusing session: ${sessionId}`);
+              break;
+            } catch (connectError) {
+              console.warn(`[${requestId}] ⚠️ Failed to connect to session ${sessionCandidate.sessionId}:`, connectError);
+              // Continue to try next session
+            }
           }
         }
       } catch (sessionsError) {
@@ -243,94 +241,52 @@ export class SimpleCloudflareBrowserService {
       console.log(`[${requestId}] 🔧 Setting ${Object.keys(headers).length} HTTP headers`);
       await page.setExtraHTTPHeaders(headers);
 
-      // Navigate with optimized wait strategy
-      let html: string = '';
-      let title: string = '';
-      let retryCount = 0;
-      const maxRetries = 2;
+      // Navigate with single attempt - no retry logic for blocked content
+      console.log(`[${requestId}] 🎯 Attempting navigation (single attempt)`);
+      const attemptStartTime = Date.now();
 
-      while (retryCount <= maxRetries) {
-        const attemptStartTime = Date.now();
-        console.log(`[${requestId}] 🎯 Navigation attempt ${retryCount + 1}/${maxRetries + 1}`);
+      console.log(`[${requestId}] ⏳ Navigating with optimized wait strategy...`);
+      
+      // Use networkidle2 for dynamic content, but with a reasonable timeout
+      const waitUntil = optimizeForContent ? 'domcontentloaded' : 'networkidle2';
+      
+      await page.goto(url, {
+        waitUntil,
+        timeout: DEFAULT_BROWSER_OPTIONS.timeout
+      });
+      
+      console.log(`[${requestId}] ✅ Navigation completed in ${Date.now() - attemptStartTime}ms`);
 
-        try {
-          console.log(`[${requestId}] ⏳ Navigating with optimized wait strategy...`);
-          
-          // Use networkidle2 for dynamic content, but with a reasonable timeout
-          const waitUntil = optimizeForContent ? 'domcontentloaded' : 'networkidle2';
-          
-          await page.goto(url, {
-            waitUntil,
-            timeout: DEFAULT_BROWSER_OPTIONS.timeout
-          });
-          
-          console.log(`[${requestId}] ✅ Navigation completed in ${Date.now() - attemptStartTime}ms`);
-
-          // Additional wait if specified
-          if (waitFor > 0) {
-            console.log(`[${requestId}] ⌛ Waiting ${waitFor}ms for additional content...`);
-            await new Promise(resolve => setTimeout(resolve, waitFor));
-          }
-
-          // Extract page content
-          console.log(`[${requestId}] 📖 Extracting page content and title...`);
-          const contentStartTime = Date.now();
-          [html, title] = await Promise.all([
-            page.content(),
-            page.title().catch(() => 'No title found')
-          ]);
-          console.log(`[${requestId}] ✅ Content extracted in ${Date.now() - contentStartTime}ms`, {
-            htmlLength: html.length,
-            title: title.substring(0, 100),
-          });
-
-          // Check if we got blocked content
-          console.log(`[${requestId}] 🔍 Checking for bot detection/blocking...`);
-          const blockCheck = isBlockedContent(html, title);
-          if (blockCheck.isBlocked) {
-            console.warn(`[${requestId}] 🚫 Browser rendering blocked: ${blockCheck.reason}`, {
-              titleSnippet: title.substring(0, 100),
-              htmlSnippet: html.substring(0, 200)
-            });
-
-            if (retryCount < maxRetries) {
-              const retryDelay = 5000 + Math.random() * 5000; // 5-10s random delay
-              console.log(`[${requestId}] 🔄 Waiting ${Math.round(retryDelay)}ms before retry...`);
-              await new Promise(resolve => setTimeout(resolve, retryDelay));
-
-              // Try with a different user agent
-              const newUserAgent = getRandomUserAgent();
-              console.log(`[${requestId}] 🎭 Switching to new user agent: ${newUserAgent.substring(0, 50)}...`);
-              await page.setUserAgent(newUserAgent);
-              retryCount++;
-              continue;
-            } else {
-              throw new Error(`Content blocked after ${maxRetries + 1} attempts: ${blockCheck.reason}`);
-            }
-          }
-
-          // Success - break out of retry loop
-          console.log(`[${requestId}] 🎉 Successfully extracted content (${html.length} chars)`);
-          break;
-
-        } catch (error) {
-          console.error(`[${requestId}] ❌ Navigation attempt ${retryCount + 1} failed after ${Date.now() - attemptStartTime}ms:`, {
-            error: error instanceof Error ? error.message : String(error),
-            url,
-            retryCount
-          });
-
-          if (retryCount < maxRetries) {
-            const retryDelay = 2000;
-            console.log(`[${requestId}] ⏱️ Waiting ${retryDelay}ms before retry...`);
-            retryCount++;
-            await new Promise(resolve => setTimeout(resolve, retryDelay));
-          } else {
-            console.error(`[${requestId}] 💥 All navigation attempts failed for: ${url}`);
-            throw error;
-          }
-        }
+      // Additional wait if specified
+      if (waitFor > 0) {
+        console.log(`[${requestId}] ⌛ Waiting ${waitFor}ms for additional content...`);
+        await new Promise(resolve => setTimeout(resolve, waitFor));
       }
+
+      // Extract page content
+      console.log(`[${requestId}] 📖 Extracting page content and title...`);
+      const contentStartTime = Date.now();
+      const [html, title] = await Promise.all([
+        page.content(),
+        page.title().catch(() => 'No title found')
+      ]);
+      console.log(`[${requestId}] ✅ Content extracted in ${Date.now() - contentStartTime}ms`, {
+        htmlLength: html.length,
+        title: title.substring(0, 100),
+      });
+
+      // Check if we got blocked content - fail immediately if blocked
+      console.log(`[${requestId}] 🔍 Checking for bot detection/blocking...`);
+      const blockCheck = isBlockedContent(html, title);
+      if (blockCheck.isBlocked) {
+        console.warn(`[${requestId}] 🚫 Content blocked - failing immediately: ${blockCheck.reason}`, {
+          titleSnippet: title.substring(0, 100),
+          htmlSnippet: html.substring(0, 200)
+        });
+        throw new Error(`Content access blocked: ${blockCheck.reason}`);
+      }
+
+      console.log(`[${requestId}] 🎉 Successfully extracted content (${html.length} chars)`);
 
       let screenshot: Buffer | undefined;
       if (takeScreenshot) {
