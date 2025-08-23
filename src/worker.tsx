@@ -7,11 +7,9 @@ import analyzeCrawlHandler from "./api/analyze-crawl";
 import crawlLinksHandler from "./api/crawl-links";
 import analyzeHtmlHandler from "./api/analyze-html";
 export type AppContext = {
-  env: Env;
+	env: Env;
 };
 export default defineApp([
-	async ({ ctx }: any) => {
-	},
 	render(Document, [
 		route("/", () => <HomePage />),
 		route("/api/analyze", analyzeHandler),
