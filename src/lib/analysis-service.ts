@@ -1,6 +1,6 @@
 import { generateObject } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
-import { OptimizedCloudflareBrowserService } from './optimized-browser-service';
+import { SimpleCloudflareBrowserService } from './simple-browser-service';
 import { SiteAnalysisResult, PageAnalysis, LYTXRecommendation, PageAnalysisSchema, LYTXRecommendationSchema } from './types';
 import { DEFAULT_MODEL } from './defaults';
 
@@ -18,10 +18,10 @@ function hasLytxScriptTag(html: string): boolean {
 }
 
 export class SiteAnalysisService {
-  private browserService: OptimizedCloudflareBrowserService;
+  private browserService: SimpleCloudflareBrowserService;
 
   constructor() {
-    this.browserService = new OptimizedCloudflareBrowserService();
+    this.browserService = new SimpleCloudflareBrowserService();
   }
 
   async analyzeSite(url: string): Promise<SiteAnalysisResult> {

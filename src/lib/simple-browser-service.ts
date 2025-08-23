@@ -67,21 +67,7 @@ function isBlockedContent(html: string, title: string): { isBlocked: boolean; re
   return { isBlocked: false };
 }
 
-export class OptimizedCloudflareBrowserService {
-  private sessionManagerId?: DurableObjectId;
-
-  constructor() {
-    // Initialize the session manager Durable Object ID
-    this.sessionManagerId = env.BROWSER_SESSION_MANAGER.idFromName("global-session-manager");
-  }
-
-  private async getSessionManager() {
-    if (!this.sessionManagerId) {
-      this.sessionManagerId = env.BROWSER_SESSION_MANAGER.idFromName("global-session-manager");
-    }
-    return env.BROWSER_SESSION_MANAGER.get(this.sessionManagerId);
-  }
-
+export class SimpleCloudflareBrowserService {
   async clearCache(url: string, options: any = {}): Promise<void> {
     if (!env.SITE_ANALYSIS_CACHE) return;
 
@@ -111,13 +97,11 @@ export class OptimizedCloudflareBrowserService {
       optimizeForContent = true,
     } = options;
 
-    // Normalize URL for consistent caching (remove trailing slash, etc.)
-    const normalizedUrl = new URL(url).toString();
-    const cacheKey = `page:${normalizedUrl}:${JSON.stringify(options)}`;
+    const cacheKey = `page:${url}:${JSON.stringify(options)}`;
     const startTime = Date.now();
     const requestId = Math.random().toString(36).substring(7);
 
-    console.log(`[${requestId}] 🚀 Starting optimized page render for: ${normalizedUrl}`, {
+    console.log(`[${requestId}] 🚀 Starting simple browser render for: ${url}`, {
       viewport,
       takeScreenshot,
       waitFor,
@@ -129,7 +113,7 @@ export class OptimizedCloudflareBrowserService {
 
     // Check cache first if enabled
     if (useCache && env.SITE_ANALYSIS_CACHE) {
-      console.log(`[${requestId}] 🔍 Checking cache for: ${normalizedUrl}`);
+      console.log(`[${requestId}] 🔍 Checking cache for: ${url}`);
       try {
         const cached = await env.SITE_ANALYSIS_CACHE.get(cacheKey);
         if (cached) {
@@ -143,50 +127,53 @@ export class OptimizedCloudflareBrowserService {
       }
     }
 
-    let sessionId: string | undefined;
     let browser: any;
+    let sessionId: string | undefined;
     let isReusedSession = false;
     
     try {
-      // Get session manager
-      const sessionManager = await this.getSessionManager();
-
-      // Try to acquire a session
-      console.log(`[${requestId}] 🔄 Acquiring browser session...`);
-      const acquireResponse = await sessionManager.fetch(new Request('https://session-manager/acquire', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ priority: 'normal' })
-      }));
-
-      if (!acquireResponse.ok) {
-        throw new Error(`Failed to acquire session: ${acquireResponse.status} ${await acquireResponse.text()}`);
+      // Use Cloudflare's built-in session management with puppeteer.sessions()
+      console.log(`[${requestId}] 🔍 Checking for available Cloudflare sessions...`);
+      
+      let availableSessions: any[] = [];
+      try {
+        availableSessions = await puppeteer.sessions(env.MYBROWSER);
+        console.log(`[${requestId}] 📊 Found ${availableSessions.length} total sessions`);
+        
+        // Filter to available sessions (no active connection)
+        const freeSessions = availableSessions.filter(s => !s.connectionId);
+        console.log(`[${requestId}] 📊 Found ${freeSessions.length} available sessions for reuse`);
+        
+        if (freeSessions.length > 0) {
+          // Use the most recently used session
+          const sessionToReuse = freeSessions.reduce((latest, current) => 
+            current.lastPingReceived > latest.lastPingReceived ? current : latest
+          );
+          
+          try {
+            console.log(`[${requestId}] ♻️ Attempting to connect to session: ${sessionToReuse.sessionId}`);
+            browser = await puppeteer.connect(env.MYBROWSER, sessionToReuse.sessionId);
+            sessionId = sessionToReuse.sessionId;
+            isReusedSession = true;
+            console.log(`[${requestId}] ✅ Successfully reusing session: ${sessionId}`);
+          } catch (connectError) {
+            console.warn(`[${requestId}] ⚠️ Failed to connect to session ${sessionToReuse.sessionId}:`, connectError);
+            // Fall through to create new session
+          }
+        }
+      } catch (sessionsError) {
+        console.warn(`[${requestId}] ⚠️ Failed to get sessions list:`, sessionsError);
+        // Fall through to create new session
       }
 
-      const sessionInfo = await acquireResponse.json() as { sessionId: string; isReused: boolean; };
-      const suggestedSessionId = sessionInfo.sessionId;
-      isReusedSession = sessionInfo.isReused;
-
-      console.log(`[${requestId}] ${isReusedSession ? '♻️ Trying to reuse' : '🚀 Creating new'} session: ${suggestedSessionId}`);
-
-      // Always try to connect first (for reused sessions) or launch new
-      if (isReusedSession) {
-        try {
-          browser = await puppeteer.connect(env.MYBROWSER, suggestedSessionId);
-          sessionId = suggestedSessionId; // Successfully connected to existing session
-          console.log(`[${requestId}] ♻️ Successfully reusing session: ${sessionId}`);
-        } catch (error) {
-          console.warn(`[${requestId}] ⚠️ Failed to connect to session ${suggestedSessionId}, creating new one:`, error);
-          // Connection failed, create new session instead
-          browser = await puppeteer.launch(env.MYBROWSER);
-          sessionId = browser.sessionId();
-          isReusedSession = false;
-          console.log(`[${requestId}] 🚀 Created new session after connection failure: ${sessionId}`);
-        }
-      } else {
+      // If no session reused, create new one
+      if (!browser) {
+        console.log(`[${requestId}] 🚀 Creating new browser session...`);
+        const browserStartTime = Date.now();
         browser = await puppeteer.launch(env.MYBROWSER);
         sessionId = browser.sessionId();
-        console.log(`[${requestId}] 🚀 Created new session: ${sessionId}`);
+        isReusedSession = false;
+        console.log(`[${requestId}] ✅ New session created: ${sessionId} (${Date.now() - browserStartTime}ms)`);
       }
 
       console.log(`[${requestId}] 📄 Creating new browser page...`);
@@ -321,7 +308,6 @@ export class OptimizedCloudflareBrowserService {
         } catch (error) {
           console.error(`[${requestId}] ❌ Navigation attempt ${retryCount + 1} failed after ${Date.now() - attemptStartTime}ms:`, {
             error: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : undefined,
             url,
             retryCount
           });
@@ -350,7 +336,7 @@ export class OptimizedCloudflareBrowserService {
         console.log(`[${requestId}] ✅ Screenshot captured in ${Date.now() - screenshotStartTime}ms (${screenshot.length} bytes)`);
       }
 
-      // IMPORTANT: Disconnect instead of close to reuse the session
+      // IMPORTANT: Disconnect instead of close to allow reuse
       console.log(`[${requestId}] 🔌 Disconnecting from browser session (keeping alive for reuse)...`);
       browser.disconnect();
 
@@ -369,29 +355,15 @@ export class OptimizedCloudflareBrowserService {
         },
       };
 
-      console.log(`[${requestId}] 📊 Optimized render summary:`, {
+      console.log(`[${requestId}] 📊 Simple render summary:`, {
         totalTime: `${loadTime}ms`,
         htmlSize: `${html.length} chars`,
         hasScreenshot: !!screenshot,
         screenshotSize: screenshot ? `${screenshot.length} bytes` : 'N/A',
         sessionReused: isReusedSession,
+        sessionId: sessionId?.substring(0, 8) + '...',
         resourcesBlocked: blockResources
       });
-
-      // Release the session back to the pool
-      if (sessionId) {
-        try {
-          const sessionManager = await this.getSessionManager();
-          await sessionManager.fetch(new Request('https://session-manager/release', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionId })
-          }));
-          console.log(`[${requestId}] ✅ Session released back to pool: ${sessionId}`);
-        } catch (error) {
-          console.warn(`[${requestId}] ⚠️ Failed to release session:`, error);
-        }
-      }
 
       // Cache the result if enabled
       if (useCache && env.SITE_ANALYSIS_CACHE) {
@@ -411,14 +383,13 @@ export class OptimizedCloudflareBrowserService {
         }
       }
 
-      console.log(`[${requestId}] 🏁 Optimized page render completed successfully in ${loadTime}ms`);
+      console.log(`[${requestId}] 🏁 Simple page render completed successfully in ${loadTime}ms`);
       return result;
       
     } catch (error) {
       const totalTime = Date.now() - startTime;
-      console.error(`[${requestId}] 💥 Optimized browser rendering failed after ${totalTime}ms for ${url}:`, {
+      console.error(`[${requestId}] 💥 Simple browser rendering failed after ${totalTime}ms for ${url}:`, {
         error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack?.substring(0, 500) : undefined,
         timestamp: new Date().toISOString(),
         url,
         options,
@@ -426,106 +397,7 @@ export class OptimizedCloudflareBrowserService {
         isReusedSession
       });
 
-      // Clean up: try to release session if we had one
-      if (sessionId) {
-        try {
-          const sessionManager = await this.getSessionManager();
-          await sessionManager.fetch(new Request('https://session-manager/release', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionId })
-          }));
-        } catch (releaseError) {
-          console.warn(`[${requestId}] Failed to release session on error:`, releaseError);
-        }
-      }
-
       throw new Error(`Failed to render page: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  // Legacy method for compatibility
-  async takeScreenshot(url: string, options: {
-    viewport?: { width: number; height: number };
-    fullPage?: boolean;
-    quality?: number;
-  } = {}): Promise<Buffer> {
-    const result = await this.renderPage(url, {
-      ...options,
-      takeScreenshot: true,
-      blockResources: true,
-      optimizeForContent: false
-    });
-    
-    if (!result.screenshot) {
-      throw new Error('Screenshot was not captured');
-    }
-    
-    return result.screenshot;
-  }
-
-  // Legacy method for compatibility
-  async extractStructuredData(url: string, selectors: Record<string, string>): Promise<Record<string, any>> {
-    console.log('Extracting structured data for:', url);
-
-    // For structured data extraction, we need a full browser session
-    // This is less optimized but necessary for complex DOM queries
-    try {
-      const browser = await puppeteer.launch(env.MYBROWSER);
-      const page = await browser.newPage();
-
-      await page.goto(url, {
-        waitUntil: 'domcontentloaded',
-        timeout: 30000
-      });
-
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      const data: Record<string, any> = {};
-
-      for (const [key, selector] of Object.entries(selectors)) {
-        try {
-          const element = await page.$(selector);
-          if (element) {
-            data[key] = await element.evaluate((el) => el.textContent?.trim() || '');
-          } else {
-            data[key] = null;
-          }
-        } catch (error) {
-          console.warn(`Failed to extract ${key} with selector ${selector}:`, error);
-          data[key] = null;
-        }
-      }
-
-      await browser.close(); // Close this one since it's a special case
-      return data;
-    } catch (error) {
-      console.error('Data extraction error for', url, ':', error);
-      throw new Error(`Failed to extract data: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  // Utility method to get session manager status
-  async getSessionStatus(): Promise<any> {
-    try {
-      const sessionManager = await this.getSessionManager();
-      const response = await sessionManager.fetch(new Request('https://session-manager/status'));
-      return await response.json();
-    } catch (error) {
-      console.error('Failed to get session status:', error);
-      return { error: 'Failed to get session status' };
-    }
-  }
-
-  // Utility method to trigger cleanup
-  async triggerSessionCleanup(): Promise<any> {
-    try {
-      const sessionManager = await this.getSessionManager();
-      const response = await sessionManager.fetch(new Request('https://session-manager/cleanup'));
-      return await response.json();
-    } catch (error) {
-      console.error('Failed to trigger cleanup:', error);
-      return { error: 'Failed to trigger cleanup' };
     }
   }
 }
