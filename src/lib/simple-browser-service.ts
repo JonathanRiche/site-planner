@@ -140,15 +140,23 @@ export class SimpleCloudflareBrowserService {
         availableSessions = await puppeteer.sessions(env.MYBROWSER);
         console.log(`[${requestId}] 📊 Found ${availableSessions.length} total sessions`);
         
+        // Log session details for debugging
+        if (availableSessions.length > 0) {
+          console.log(`[${requestId}] 🔍 Session details:`, availableSessions.map(s => ({
+            sessionId: s.sessionId?.substring(0, 8) + '...',
+            connectionId: s.connectionId,
+            hasConnectionId: !!s.connectionId,
+            fields: Object.keys(s)
+          })));
+        }
+
         // Filter to available sessions (no active connection)
         const freeSessions = availableSessions.filter(s => !s.connectionId);
         console.log(`[${requestId}] 📊 Found ${freeSessions.length} available sessions for reuse`);
         
         if (freeSessions.length > 0) {
-          // Use the most recently used session
-          const sessionToReuse = freeSessions.reduce((latest, current) => 
-            current.lastPingReceived > latest.lastPingReceived ? current : latest
-          );
+          // Use the first available session (they should all be disconnected)
+          const sessionToReuse = freeSessions[0];
           
           try {
             console.log(`[${requestId}] ♻️ Attempting to connect to session: ${sessionToReuse.sessionId}`);
