@@ -151,7 +151,7 @@ export class OptimizedCloudflareBrowserService {
 
       // Try to acquire a session
       console.log(`[${requestId}] 🔄 Acquiring browser session...`);
-      const acquireResponse = await sessionManager.fetch(new Request('https://dummy.com/acquire', {
+      const acquireResponse = await sessionManager.fetch(new Request('https://session-manager/acquire', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ priority: 'normal' })
@@ -172,7 +172,13 @@ export class OptimizedCloudflareBrowserService {
         browser = await puppeteer.connect(env.MYBROWSER, sessionId);
       } else {
         browser = await puppeteer.launch(env.MYBROWSER);
-        sessionId = browser.sessionId();
+        // For new sessions, the sessionId from Durable Object should match browser's sessionId
+        // If there's a mismatch, use the browser's actual sessionId and update Durable Object
+        const actualSessionId = browser.sessionId();
+        if (sessionId !== actualSessionId) {
+          console.warn(`[${requestId}] Session ID mismatch: DO=${sessionId}, Browser=${actualSessionId}. Using browser ID.`);
+          sessionId = actualSessionId;
+        }
       }
 
       console.log(`[${requestId}] 📄 Creating new browser page...`);
@@ -368,7 +374,7 @@ export class OptimizedCloudflareBrowserService {
       if (sessionId) {
         try {
           const sessionManager = await this.getSessionManager();
-          await sessionManager.fetch(new Request('https://dummy.com/release', {
+          await sessionManager.fetch(new Request('https://session-manager/release', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sessionId })
@@ -416,7 +422,7 @@ export class OptimizedCloudflareBrowserService {
       if (sessionId) {
         try {
           const sessionManager = await this.getSessionManager();
-          await sessionManager.fetch(new Request('https://dummy.com/release', {
+          await sessionManager.fetch(new Request('https://session-manager/release', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sessionId })
@@ -495,7 +501,7 @@ export class OptimizedCloudflareBrowserService {
   async getSessionStatus(): Promise<any> {
     try {
       const sessionManager = await this.getSessionManager();
-      const response = await sessionManager.fetch(new Request('https://dummy.com/status'));
+      const response = await sessionManager.fetch(new Request('https://session-manager/status'));
       return await response.json();
     } catch (error) {
       console.error('Failed to get session status:', error);
@@ -507,7 +513,7 @@ export class OptimizedCloudflareBrowserService {
   async triggerSessionCleanup(): Promise<any> {
     try {
       const sessionManager = await this.getSessionManager();
-      const response = await sessionManager.fetch(new Request('https://dummy.com/cleanup'));
+      const response = await sessionManager.fetch(new Request('https://session-manager/cleanup'));
       return await response.json();
     } catch (error) {
       console.error('Failed to trigger cleanup:', error);

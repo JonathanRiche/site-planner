@@ -7,7 +7,7 @@ import analyzeCrawlHandler from "./api/analyze-crawl";
 import crawlLinksHandler from "./api/crawl-links";
 import analyzeHtmlHandler from "./api/analyze-html";
 import browserSessionsHandler from "./api/browser-sessions";
-import { BrowserSessionManager } from "./lib/browser-session-manager";
+import { SimpleBrowserSessionManager } from "./lib/simple-session-manager";
 export type AppContext = {
 	env: Env;
 };
@@ -23,4 +23,4 @@ export default defineApp([
 ]);
 
 // Export Durable Object
-export { BrowserSessionManager };
+export { SimpleBrowserSessionManager as BrowserSessionManager };

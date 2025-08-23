@@ -2,9 +2,9 @@ import puppeteer, { Browser } from '@cloudflare/puppeteer';
 
 export interface BrowserSession {
   sessionId: string;
-  browser: Browser;
   lastUsed: number;
   isActive: boolean;
+  createdAt: number;
 }
 
 export interface SessionRequestOptions {
@@ -112,22 +112,26 @@ export class BrowserSessionManager implements DurableObject {
     // Create new session
     console.log(`[${requestId}] 🚀 Creating new browser session...`);
     const startTime = Date.now();
-
+    
     try {
       const browser = await puppeteer.launch(this.env.MYBROWSER);
       const sessionId = browser.sessionId();
       const createTime = Date.now() - startTime;
-
+      
+      // IMPORTANT: Disconnect immediately to allow reconnection
+      // The browser session stays alive but can be reconnected to
+      browser.disconnect();
+      
       const session: BrowserSession = {
         sessionId,
-        browser,
         lastUsed: Date.now(),
-        isActive: true
+        isActive: true,
+        createdAt: Date.now()
       };
 
       this.sessions.set(sessionId, session);
-
-      console.log(`[${requestId}] ✅ New session created: ${sessionId} (${createTime}ms)`, {
+      
+      console.log(`[${requestId}] ✅ New session created and made available: ${sessionId} (${createTime}ms)`, {
         totalSessions: this.sessions.size,
         maxSessions
       });
@@ -254,7 +258,9 @@ export class BrowserSessionManager implements DurableObject {
       if (session) {
         try {
           console.log(`🗑️ Closing stale session: ${sessionId} (inactive for ${Math.round((now - session.lastUsed) / 1000)}s)`);
-          await session.browser.close();
+          // Connect to session just to close it properly
+          const browser = await puppeteer.connect(this.env.MYBROWSER, sessionId);
+          await browser.close();
         } catch (error) {
           console.warn(`Failed to close session ${sessionId}:`, error);
         }
@@ -284,8 +290,10 @@ export class BrowserSessionManager implements DurableObject {
 
     // Try to reconnect to verify the session is still valid
     try {
-      await puppeteer.connect(this.env.MYBROWSER, sessionId);
-      return session.browser;
+      const browser = await puppeteer.connect(this.env.MYBROWSER, sessionId);
+      // Disconnect immediately - we just wanted to verify it's alive
+      browser.disconnect();
+      return browser;
     } catch (error) {
       // Session is stale, remove it
       console.warn(`Removing stale session: ${sessionId}`, error);
