@@ -1,4 +1,4 @@
-import { CloudflareBrowserService } from '../lib/browser-service';
+import { OptimizedCloudflareBrowserService } from '../lib/optimized-browser-service';
 
 import type { AppContext } from "@/worker";
 import type { RequestInfo } from "rwsdk/worker";
@@ -52,8 +52,12 @@ export default async function crawlLinksHandler({ request }: RequestInfo<any, Ap
       });
     }
 
-    const browser = new CloudflareBrowserService();
-    const page = await browser.renderPage(rootUrl, { useCache: true });
+    const browser = new OptimizedCloudflareBrowserService();
+    const page = await browser.renderPage(rootUrl, { 
+      useCache: true, 
+      blockResources: true, 
+      optimizeForContent: true 
+    });
     const allUrls = extractInternalLinks(page.html, page.url, 100);
     const selected = [new URL(rootUrl).toString(), ...allUrls.slice(0, Math.max(0, maxPages - 1))];
     return new Response(JSON.stringify({ urls: selected, allUrls }), {

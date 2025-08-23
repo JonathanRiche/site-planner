@@ -1,5 +1,5 @@
 import { SiteAnalysisService } from '../lib/analysis-service';
-import { CloudflareBrowserService } from '../lib/browser-service';
+import { OptimizedCloudflareBrowserService } from '../lib/optimized-browser-service';
 import { getDb, searches } from '../lib/db';
 
 import type { AppContext } from "@/worker";
@@ -69,13 +69,23 @@ export default async function analyzeCrawlHandler({ request }: RequestInfo<any, 
       throw new Error('OpenAI API key not configured. Please set OPENAI_API_KEY in .dev.vars');
     }
 
-    const browser = new CloudflareBrowserService();
-    const page = await browser.renderPage(rootUrl, { useCache: true });
+    // Normalize URL to ensure consistent caching
+    const normalizedRootUrl = new URL(rootUrl).toString();
+    
+    const browser = new OptimizedCloudflareBrowserService();
+    const page = await browser.renderPage(normalizedRootUrl, { 
+      useCache: true, 
+      blockResources: true, 
+      optimizeForContent: true 
+    });
 
     const internalLinks = extractInternalLinks(page.html, page.url, maxPages - 1);
 
-    // Include root first
-    const urlsToAnalyze = [new URL(rootUrl).toString(), ...internalLinks];
+    // Include root first, but avoid duplicate if already in internalLinks
+    const rootUrlInLinks = internalLinks.includes(normalizedRootUrl);
+    const urlsToAnalyze = rootUrlInLinks 
+      ? internalLinks.slice(0, maxPages)  // Root already included
+      : [normalizedRootUrl, ...internalLinks.slice(0, maxPages - 1)]; // Add root first
 
     const analysisService = new SiteAnalysisService();
     const results = await analysisService.analyzeMultiplePages(urlsToAnalyze);
