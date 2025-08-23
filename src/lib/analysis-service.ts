@@ -203,18 +203,63 @@ Focus on conversion impact and provide clear implementation guidance.`,
     }
   }
 
-  async analyzeMultiplePages(urls: string[]): Promise<SiteAnalysisResult[]> {
-    const results: SiteAnalysisResult[] = [];
+  async analyzeMultiplePages(urls: string[], options: {
+    concurrency?: number;
+  } = {}): Promise<SiteAnalysisResult[]> {
+    const { concurrency = 3 } = options; // Default to 3 concurrent requests
+    const batchId = crypto.randomUUID();
     
-    for (const url of urls) {
+    console.log(`🚀 [${batchId}] Starting parallel analysis of ${urls.length} URLs with concurrency=${concurrency}`);
+    
+    // Use Promise.allSettled to process all URLs in parallel while handling failures gracefully
+    const promises = urls.map(async (url, index) => {
       try {
+        console.log(`📄 [${batchId}] Starting analysis ${index + 1}/${urls.length}: ${url}`);
         const result = await this.analyzeSite(url);
-        results.push(result);
+        console.log(`✅ [${batchId}] Completed analysis ${index + 1}/${urls.length}: ${url}`);
+        return { status: 'fulfilled' as const, value: result, url };
       } catch (error) {
-        console.error(`Failed to analyze ${url}:`, error);
-        // Continue with other URLs even if one fails
+        console.error(`❌ [${batchId}] Failed analysis ${index + 1}/${urls.length}: ${url}:`, error);
+        return { status: 'rejected' as const, reason: error, url };
       }
+    });
+
+    // Process with controlled concurrency to avoid overwhelming the system
+    const results: SiteAnalysisResult[] = [];
+    const batches: Promise<any>[][] = [];
+    
+    // Split into batches of concurrent requests
+    for (let i = 0; i < promises.length; i += concurrency) {
+      batches.push(promises.slice(i, i + concurrency));
     }
+    
+    for (const [batchIndex, batch] of batches.entries()) {
+      console.log(`🔄 [${batchId}] Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} URLs)`);
+      const batchStartTime = Date.now();
+      
+      const batchResults = await Promise.allSettled(batch);
+      
+      // Extract successful results
+      for (const promiseResult of batchResults) {
+        if (promiseResult.status === 'fulfilled' && promiseResult.value.status === 'fulfilled') {
+          results.push(promiseResult.value.value);
+        }
+        // Errors are already logged in the individual promises above
+      }
+      
+      console.log(`✅ [${batchId}] Batch ${batchIndex + 1}/${batches.length} completed in ${Date.now() - batchStartTime}ms`);
+    }
+    
+    const successCount = results.length;
+    const failureCount = urls.length - successCount;
+    
+    console.log(`🏁 [${batchId}] Parallel analysis completed:`, {
+      totalUrls: urls.length,
+      successful: successCount,
+      failed: failureCount,
+      successRate: `${Math.round((successCount / urls.length) * 100)}%`,
+      concurrency
+    });
     
     return results;
   }

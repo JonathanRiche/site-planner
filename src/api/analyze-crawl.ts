@@ -54,9 +54,10 @@ export default async function analyzeCrawlHandler({ request }: RequestInfo<any, 
   }
 
   try {
-    const body: { url: string; maxPages?: number } = await request.json();
+    const body: { url: string; maxPages?: number; concurrency?: number } = await request.json();
     const rootUrl = body.url;
     const maxPages = Math.min(Math.max(body.maxPages ?? 5, 1), 20);
+    const concurrency = Math.min(Math.max(body.concurrency ?? 3, 1), 5); // Max 5 concurrent
 
     if (!rootUrl) {
       return new Response(JSON.stringify({ error: 'URL is required' }), {
@@ -88,7 +89,10 @@ export default async function analyzeCrawlHandler({ request }: RequestInfo<any, 
       : [normalizedRootUrl, ...internalLinks.slice(0, maxPages - 1)]; // Add root first
 
     const analysisService = new SiteAnalysisService();
-    const results = await analysisService.analyzeMultiplePages(urlsToAnalyze);
+    // Use parallel processing with configurable concurrency for Cloudflare Workers
+    const results = await analysisService.analyzeMultiplePages(urlsToAnalyze, { 
+      concurrency: Math.min(urlsToAnalyze.length, concurrency) // Use configured concurrency, or fewer if less URLs
+    });
 
     // Persist searches
     try {
