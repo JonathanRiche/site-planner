@@ -95,78 +95,30 @@ async function createSession(request: Request): Promise<Response> {
     
     console.log(`📝 Created session ${sessionId} for URL: ${siteUrl}`);
     
-    // Simplified approach: Just call the existing analyze-crawl endpoint
-    console.log(`🚀 Starting analysis via direct call for session ${sessionId}...`);
+    // Use Durable Object for background analysis
+    console.log(`🚀 Starting background analysis using Durable Object for session ${sessionId}...`);
     
     try {
-      // Create a fake request to the analyze-crawl endpoint
-      const analyzeRequest = new Request('https://internal/api/analyze-crawl', {
+      // Get the Durable Object instance
+      const durableObjectId = env.SESSION_ANALYSIS_MANAGER.idFromName(sessionId);
+      const durableObject = env.SESSION_ANALYSIS_MANAGER.get(durableObjectId);
+      
+      // Start the analysis in the Durable Object
+      await durableObject.fetch('https://internal/start-analysis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          url: sessionData.url, 
+        body: JSON.stringify({
+          sessionId,
+          url: sessionData.url,
           maxPages: sessionData.maxPages,
           concurrency: 3
         })
       });
       
-      // Import and call the analyze-crawl handler directly
-      const { default: analyzeCrawlHandler } = await import('./analyze-crawl');
-      
-      // Call the handler in a separate execution context
-      analyzeCrawlHandler({ request: analyzeRequest } as any).then(async (response) => {
-        if (response.ok) {
-          const results = await response.json() as any[];
-          
-          // Update session with completed results
-          if (env.SITE_ANALYSIS_CACHE) {
-            await env.SITE_ANALYSIS_CACHE.put(
-              `session:${sessionId}`,
-              JSON.stringify({
-                ...sessionData,
-                status: 'completed',
-                progress: {
-                  stage: 'completed',
-                  current: results.length,
-                  total: results.length,
-                  message: `Analysis completed. Successfully analyzed ${results.length} pages.`
-                },
-                results,
-                updatedAt: new Date().toISOString()
-              }),
-              { expirationTtl: 60 * 60 * 24 }
-            );
-            console.log(`✅ Session ${sessionId} marked as completed with ${results.length} results`);
-          }
-        } else {
-          throw new Error(`Analysis failed: ${response.statusText}`);
-        }
-      }).catch(async (error) => {
-        console.error(`💥 Analysis failed for session ${sessionId}:`, error);
-        
-        // Update session to error state
-        if (env.SITE_ANALYSIS_CACHE) {
-          await env.SITE_ANALYSIS_CACHE.put(
-            `session:${sessionId}`,
-            JSON.stringify({
-              ...sessionData,
-              status: 'error',
-              error: error instanceof Error ? error.message : 'Analysis failed',
-              progress: {
-                stage: 'error',
-                message: `Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-              },
-              updatedAt: new Date().toISOString()
-            }),
-            { expirationTtl: 60 * 60 * 24 }
-          );
-        }
-      });
-      
-      console.log(`✅ Analysis process initiated for session ${sessionId}`);
+      console.log(`✅ Analysis process initiated via Durable Object for session ${sessionId}`);
       
     } catch (error) {
-      console.error(`💥 Failed to initiate analysis for session ${sessionId}:`, error);
+      console.error(`💥 Failed to initiate Durable Object analysis for session ${sessionId}:`, error);
       
       // Update session to error state immediately
       if (env.SITE_ANALYSIS_CACHE) {
