@@ -104,14 +104,12 @@ async function createSession(request: Request): Promise<Response> {
       const durableObject = env.SESSION_ANALYSIS_MANAGER.get(durableObjectId);
       
       // Start the analysis in the Durable Object
-      await durableObject.fetch('https://internal/start-analysis', {
+      await durableObject.fetch('https://internal/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId,
-          url: sessionData.url,
-          maxPages: sessionData.maxPages,
-          concurrency: 3
+          sessionData
         })
       });
       
