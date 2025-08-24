@@ -137,12 +137,23 @@ export class SessionAnalysisManager extends DurableObject {
           }
         });
         
-        // Step 2: Analyze pages in parallel
+        // Step 2: Analyze pages in parallel with timeout protection
         console.log(`🤖 DO: Starting parallel analysis for session ${sessionId}`);
         const analysisService = new SiteAnalysisService();
-        const results = await analysisService.analyzeMultiplePages(urlsToAnalyze, { 
-          concurrency: Math.min(urlsToAnalyze.length, 3)
+        
+        // Add timeout protection (5 minutes max)
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Analysis timeout after 5 minutes')), 5 * 60 * 1000);
         });
+        
+        const results = await Promise.race([
+          analysisService.analyzeMultiplePages(urlsToAnalyze, { 
+            concurrency: Math.min(urlsToAnalyze.length, 3)
+          }),
+          timeoutPromise
+        ]) as any[];
+        
+        console.log(`✅ DO: Parallel analysis completed for session ${sessionId} with ${results.length} results`);
         
         // Update with completed results
         await updateSession({
@@ -170,7 +181,16 @@ export class SessionAnalysisManager extends DurableObject {
         
         console.log(`🤖 DO: Starting single page analysis for session ${sessionId}`);
         const analysisService = new SiteAnalysisService();
-        const result = await analysisService.analyzeSite(sessionData.url);
+        
+        // Add timeout protection (3 minutes max for single page)
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Single page analysis timeout after 3 minutes')), 3 * 60 * 1000);
+        });
+        
+        const result = await Promise.race([
+          analysisService.analyzeSite(sessionData.url),
+          timeoutPromise
+        ]) as any;
         
         await updateSession({
           status: 'completed',
