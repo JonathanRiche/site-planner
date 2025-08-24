@@ -95,37 +95,97 @@ async function createSession(request: Request): Promise<Response> {
     
     console.log(`📝 Created session ${sessionId} for URL: ${siteUrl}`);
     
-    // Start analysis in background (fire and forget)
-    console.log(`🚀 Starting background analysis for session ${sessionId}...`);
+    // Simplified approach: Just call the existing analyze-crawl endpoint
+    console.log(`🚀 Starting analysis via direct call for session ${sessionId}...`);
     
-    // Use setTimeout to ensure the function starts executing
-    setTimeout(() => {
-      console.log(`⚡ Timeout triggered, about to call startBackgroundAnalysis for ${sessionId}`);
-      startBackgroundAnalysis(sessionId, sessionData).catch(error => {
-        console.error(`💥 Background analysis failed for session ${sessionId}:`, error);
-        console.error(`Stack trace:`, error.stack);
+    try {
+      // Create a fake request to the analyze-crawl endpoint
+      const analyzeRequest = new Request('https://internal/api/analyze-crawl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          url: sessionData.url, 
+          maxPages: sessionData.maxPages,
+          concurrency: 3
+        })
+      });
+      
+      // Import and call the analyze-crawl handler directly
+      const { default: analyzeCrawlHandler } = await import('./analyze-crawl');
+      
+      // Call the handler in a separate execution context
+      analyzeCrawlHandler({ request: analyzeRequest } as any).then(async (response) => {
+        if (response.ok) {
+          const results = await response.json() as any[];
+          
+          // Update session with completed results
+          if (env.SITE_ANALYSIS_CACHE) {
+            await env.SITE_ANALYSIS_CACHE.put(
+              `session:${sessionId}`,
+              JSON.stringify({
+                ...sessionData,
+                status: 'completed',
+                progress: {
+                  stage: 'completed',
+                  current: results.length,
+                  total: results.length,
+                  message: `Analysis completed. Successfully analyzed ${results.length} pages.`
+                },
+                results,
+                updatedAt: new Date().toISOString()
+              }),
+              { expirationTtl: 60 * 60 * 24 }
+            );
+            console.log(`✅ Session ${sessionId} marked as completed with ${results.length} results`);
+          }
+        } else {
+          throw new Error(`Analysis failed: ${response.statusText}`);
+        }
+      }).catch(async (error) => {
+        console.error(`💥 Analysis failed for session ${sessionId}:`, error);
         
         // Update session to error state
         if (env.SITE_ANALYSIS_CACHE) {
-          env.SITE_ANALYSIS_CACHE.put(
+          await env.SITE_ANALYSIS_CACHE.put(
             `session:${sessionId}`,
             JSON.stringify({
               ...sessionData,
               status: 'error',
-              error: error.message,
+              error: error instanceof Error ? error.message : 'Analysis failed',
               progress: {
                 stage: 'error',
-                message: `Analysis failed: ${error.message}`
+                message: `Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`
               },
               updatedAt: new Date().toISOString()
             }),
             { expirationTtl: 60 * 60 * 24 }
-          ).catch(cacheError => {
-            console.error(`Failed to update session ${sessionId} with error state:`, cacheError);
-          });
+          );
         }
       });
-    }, 100); // Small delay to ensure response is sent first
+      
+      console.log(`✅ Analysis process initiated for session ${sessionId}`);
+      
+    } catch (error) {
+      console.error(`💥 Failed to initiate analysis for session ${sessionId}:`, error);
+      
+      // Update session to error state immediately
+      if (env.SITE_ANALYSIS_CACHE) {
+        await env.SITE_ANALYSIS_CACHE.put(
+          `session:${sessionId}`,
+          JSON.stringify({
+            ...sessionData,
+            status: 'error',
+            error: error instanceof Error ? error.message : 'Failed to start analysis',
+            progress: {
+              stage: 'error',
+              message: `Failed to start analysis: ${error instanceof Error ? error.message : 'Unknown error'}`
+            },
+            updatedAt: new Date().toISOString()
+          }),
+          { expirationTtl: 60 * 60 * 24 }
+        );
+      }
+    }
     
     return new Response(JSON.stringify({
       sessionId,
@@ -237,192 +297,4 @@ async function updateSession(sessionId: string, request: Request): Promise<Respo
   }
 }
 
-async function startBackgroundAnalysis(sessionId: string, sessionData: SessionData) {
-  console.log(`⚡ BACKGROUND ANALYSIS FUNCTION CALLED for session ${sessionId}, URL: ${sessionData.url}`);
-  console.log(`⚡ Session data:`, JSON.stringify(sessionData, null, 2));
-  
-  const updateSession = async (updates: Partial<SessionData>) => {
-    try {
-      if (!env.SITE_ANALYSIS_CACHE) {
-        console.error(`❌ No SITE_ANALYSIS_CACHE available for session ${sessionId}`);
-        return;
-      }
-      
-      const currentData = await env.SITE_ANALYSIS_CACHE.get(`session:${sessionId}`);
-      if (!currentData) {
-        console.error(`❌ Session ${sessionId} not found in cache`);
-        return;
-      }
-      
-      const data = JSON.parse(currentData) as SessionData;
-      const updatedData = {
-        ...data,
-        ...updates,
-        updatedAt: new Date().toISOString()
-      } as SessionData;
-      
-      console.log(`📝 Updating session ${sessionId}:`, { status: updatedData.status, stage: updatedData.progress?.stage });
-      
-      await env.SITE_ANALYSIS_CACHE.put(
-        `session:${sessionId}`, 
-        JSON.stringify(updatedData),
-        { expirationTtl: 60 * 60 * 24 }
-      );
-    } catch (error) {
-      console.error(`💥 Failed to update session ${sessionId}:`, error);
-    }
-  };
-   
-  try {
-    // Check for required environment variables first
-    console.log(`🔍 Checking environment for session ${sessionId}...`);
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY not configured. Cannot proceed with analysis.');
-    }
-    console.log(`✅ OPENAI_API_KEY is configured for session ${sessionId}`);
-    
-    // Import the analysis service dynamically to avoid circular dependencies
-    console.log(`📦 Importing analysis services for session ${sessionId}...`);
-    const { SiteAnalysisService } = await import('../lib/analysis-service');
-    const { OptimizedCloudflareBrowserService } = await import('../lib/optimized-browser-service');
-    console.log(`✅ Services imported successfully for session ${sessionId}`);
-    
-    if (sessionData.crawl) {
-      // Update status to crawling
-      await updateSession({
-        status: 'crawling',
-        progress: {
-          stage: 'crawling',
-          message: `Crawling pages from ${sessionData.url}...`
-        }
-      });
-      
-      // Step 1: Crawl links
-      const browser = new OptimizedCloudflareBrowserService();
-      const page = await browser.renderPage(sessionData.url, { 
-        useCache: true, 
-        blockResources: true, 
-        optimizeForContent: true 
-      });
-      
-      // Extract internal links (using same logic as analyze-crawl.ts)
-      const internalLinks = extractInternalLinks(page.html, page.url, sessionData.maxPages - 1);
-      const rootUrlInLinks = internalLinks.includes(sessionData.url);
-      const urlsToAnalyze = rootUrlInLinks 
-        ? internalLinks.slice(0, sessionData.maxPages)
-        : [sessionData.url, ...internalLinks.slice(0, sessionData.maxPages - 1)];
-      
-      // Update with found URLs
-      await updateSession({
-        status: 'analyzing',
-        progress: {
-          stage: 'analyzing',
-          current: 0,
-          total: urlsToAnalyze.length,
-          message: `Found ${internalLinks.length} internal links. Analyzing ${urlsToAnalyze.length} pages...`,
-          urls: urlsToAnalyze,
-          allUrls: internalLinks
-        }
-      });
-      
-      // Step 2: Analyze pages in parallel
-      const analysisService = new SiteAnalysisService();
-      const results = await analysisService.analyzeMultiplePages(urlsToAnalyze, { 
-        concurrency: Math.min(urlsToAnalyze.length, 3)
-      });
-      
-      // Update with completed results
-      await updateSession({
-        status: 'completed',
-        progress: {
-          stage: 'completed',
-          current: results.length,
-          total: urlsToAnalyze.length,
-          message: `Analysis completed. Successfully analyzed ${results.length} out of ${urlsToAnalyze.length} pages.`
-        },
-        results
-      });
-      
-    } else {
-      // Single page analysis
-      await updateSession({
-        status: 'analyzing',
-        progress: {
-          stage: 'analyzing',
-          current: 0,
-          total: 1,
-          message: `Analyzing ${sessionData.url}...`
-        }
-      });
-      
-      const analysisService = new SiteAnalysisService();
-      const result = await analysisService.analyzeSite(sessionData.url);
-      
-      await updateSession({
-        status: 'completed',
-        progress: {
-          stage: 'completed',
-          current: 1,
-          total: 1,
-          message: 'Analysis completed successfully!'
-        },
-        results: [result]
-      });
-    }
-    
-    console.log(`✅ Background analysis completed for session ${sessionId}`);
-    
-  } catch (error) {
-    console.error(`❌ Background analysis failed for session ${sessionId}:`, error);
-    
-    await updateSession({
-      status: 'error',
-      progress: {
-        stage: 'error',
-        message: `Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-      },
-      error: error instanceof Error ? error.message : 'Analysis failed'
-    });
-  }
-}
-
-// Helper function to extract internal links (copied from analyze-crawl.ts)
-function extractInternalLinks(html: string, baseUrl: string, limit: number): string[] {
-  const base = new URL(baseUrl);
-  const hrefs = new Set<string>();
-
-  // Find anchor hrefs
-  const anchorRegex = /<a\s+[^>]*href=["']([^"'#]+)["'][^>]*>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = anchorRegex.exec(html)) && hrefs.size < limit * 2) {
-    const raw = match[1].trim();
-    if (!raw || raw.startsWith('mailto:') || raw.startsWith('tel:') || raw.startsWith('javascript:')) continue;
-
-    try {
-      const url = new URL(raw, base);
-      // Same origin only
-      if (url.origin !== base.origin) continue;
-      // Skip files (images, assets, docs)
-      if (/\.(png|jpg|jpeg|gif|svg|webp|ico|css|js|pdf|zip|rar|7z|mp4|mp3)(\?.*)?$/i.test(url.pathname)) continue;
-
-      // Normalize: drop hash, keep path+search minimally to avoid duplicates
-      url.hash = '';
-      const normalized = url.toString();
-      hrefs.add(normalized);
-    } catch {
-      continue;
-    }
-  }
-
-  // De-duplicate by pathname first, then limit
-  const seenPath = new Set<string>();
-  const result: string[] = [];
-  for (const u of hrefs) {
-    const p = new URL(u).pathname;
-    if (seenPath.has(p)) continue;
-    seenPath.add(p);
-    result.push(u);
-    if (result.length >= limit) break;
-  }
-  return result;
-}
+// Removed unused background analysis function - replaced with direct analyze-crawl call

@@ -10,6 +10,7 @@ import analyzeHtmlHandler from "./api/analyze-html";
 import browserSessionsHandler from "./api/browser-sessions";
 import sessionHandler from "./api/session";
 import { SimpleBrowserSessionManager } from "./lib/simple-session-manager";
+import { SessionAnalysisManager } from "./lib/session-analysis-manager";
 export type AppContext = {
 	env: Env;
 };
@@ -27,5 +28,6 @@ export default defineApp([
 	]),
 ]);
 
-// Export Durable Object
+// Export Durable Objects
 export { SimpleBrowserSessionManager as BrowserSessionManager };
+export { SessionAnalysisManager };
