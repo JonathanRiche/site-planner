@@ -97,10 +97,35 @@ async function createSession(request: Request): Promise<Response> {
     
     // Start analysis in background (fire and forget)
     console.log(`🚀 Starting background analysis for session ${sessionId}...`);
-    startBackgroundAnalysis(sessionId, sessionData).catch(error => {
-      console.error(`💥 Background analysis failed for session ${sessionId}:`, error);
-      console.error(`Stack trace:`, error.stack);
-    });
+    
+    // Use setTimeout to ensure the function starts executing
+    setTimeout(() => {
+      console.log(`⚡ Timeout triggered, about to call startBackgroundAnalysis for ${sessionId}`);
+      startBackgroundAnalysis(sessionId, sessionData).catch(error => {
+        console.error(`💥 Background analysis failed for session ${sessionId}:`, error);
+        console.error(`Stack trace:`, error.stack);
+        
+        // Update session to error state
+        if (env.SITE_ANALYSIS_CACHE) {
+          env.SITE_ANALYSIS_CACHE.put(
+            `session:${sessionId}`,
+            JSON.stringify({
+              ...sessionData,
+              status: 'error',
+              error: error.message,
+              progress: {
+                stage: 'error',
+                message: `Analysis failed: ${error.message}`
+              },
+              updatedAt: new Date().toISOString()
+            }),
+            { expirationTtl: 60 * 60 * 24 }
+          ).catch(cacheError => {
+            console.error(`Failed to update session ${sessionId} with error state:`, cacheError);
+          });
+        }
+      });
+    }, 100); // Small delay to ensure response is sent first
     
     return new Response(JSON.stringify({
       sessionId,
@@ -213,7 +238,8 @@ async function updateSession(sessionId: string, request: Request): Promise<Respo
 }
 
 async function startBackgroundAnalysis(sessionId: string, sessionData: SessionData) {
-  console.log(`⚡ Background analysis starting for session ${sessionId}, URL: ${sessionData.url}`);
+  console.log(`⚡ BACKGROUND ANALYSIS FUNCTION CALLED for session ${sessionId}, URL: ${sessionData.url}`);
+  console.log(`⚡ Session data:`, JSON.stringify(sessionData, null, 2));
   
   const updateSession = async (updates: Partial<SessionData>) => {
     try {
@@ -248,6 +274,13 @@ async function startBackgroundAnalysis(sessionId: string, sessionData: SessionDa
   };
    
   try {
+    // Check for required environment variables first
+    console.log(`🔍 Checking environment for session ${sessionId}...`);
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY not configured. Cannot proceed with analysis.');
+    }
+    console.log(`✅ OPENAI_API_KEY is configured for session ${sessionId}`);
+    
     // Import the analysis service dynamically to avoid circular dependencies
     console.log(`📦 Importing analysis services for session ${sessionId}...`);
     const { SiteAnalysisService } = await import('../lib/analysis-service');
