@@ -120,6 +120,21 @@ export function SessionPage({ sessionId }: SessionPageProps) {
           </p>
           <div className="mt-2 text-sm text-gray-500">
             Session: {sessionId}
+            <br />
+            Crawled: {new Date(sessionData.createdAt).toLocaleDateString('en-US', {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })} {sessionData.status === 'completed' && sessionData.updatedAt !== sessionData.createdAt && 
+              `(completed ${new Date(sessionData.updatedAt).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              })})`
+            }
           </div>
         </header>
 

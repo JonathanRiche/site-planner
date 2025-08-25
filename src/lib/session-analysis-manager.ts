@@ -77,7 +77,7 @@ export class SessionAnalysisManager extends DurableObject {
         await env.SITE_ANALYSIS_CACHE.put(
           `session:${sessionId}`, 
           JSON.stringify(updatedData),
-          { expirationTtl: 60 * 60 * 24 }
+          { expirationTtl: 60 * 60 * 24 * 7 } // 7 days
         );
       } catch (error) {
         console.error(`💥 DO: Failed to update session ${sessionId}:`, error);

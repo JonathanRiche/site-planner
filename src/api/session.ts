@@ -89,7 +89,7 @@ async function createSession(request: Request): Promise<Response> {
       await env.SITE_ANALYSIS_CACHE.put(
         `session:${sessionId}`, 
         JSON.stringify(sessionData),
-        { expirationTtl: 60 * 60 * 24 } // 24 hours
+        { expirationTtl: 60 * 60 * 24 * 7 } // 7 days
       );
     }
     
@@ -132,7 +132,7 @@ async function createSession(request: Request): Promise<Response> {
             },
             updatedAt: new Date().toISOString()
           }),
-          { expirationTtl: 60 * 60 * 24 }
+          { expirationTtl: 60 * 60 * 24 * 7 } // 7 days
         );
       }
     }
@@ -227,7 +227,7 @@ async function updateSession(sessionId: string, request: Request): Promise<Respo
     await env.SITE_ANALYSIS_CACHE.put(
       `session:${sessionId}`, 
       JSON.stringify(updatedData),
-      { expirationTtl: 60 * 60 * 24 } // 24 hours
+      { expirationTtl: 60 * 60 * 24 * 7 } // 7 days
     );
     
     return new Response(JSON.stringify(updatedData), {
