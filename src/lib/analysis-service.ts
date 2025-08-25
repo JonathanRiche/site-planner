@@ -24,8 +24,8 @@ export class SiteAnalysisService {
     this.browserService = new SimpleCloudflareBrowserService();
   }
 
-  // Truncate HTML content to prevent OpenAI timeout
-  private truncateHtml(html: string, maxLength: number = 8000): string {
+  // Truncate HTML content to prevent OpenAI timeout - optimized for speed
+  private truncateHtml(html: string, maxLength: number = 3000): string {
     if (html.length <= maxLength) {
       return html;
     }
@@ -42,10 +42,10 @@ export class SiteAnalysisService {
     return truncated + '\n... (truncated due to size)';
   }
 
-  // Retry page analysis with progressively shorter HTML on timeout
+  // Retry page analysis with progressively shorter HTML on timeout - optimized for speed
   private async analyzePageWithRetry(url: string, html: string, lytxDetected: boolean): Promise<any> {
     const maxRetries = 2;
-    const htmlSizes = [8000, 4000, 2000]; // Try progressively smaller chunks
+    const htmlSizes = [3000, 1500, 800]; // Smaller chunks for faster processing
     
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const currentHtmlSize = htmlSizes[attempt] || 1000;
@@ -58,14 +58,14 @@ export class SiteAnalysisService {
           generateObject({
             model: openai(DEFAULT_MODEL),
             schema: PageAnalysisSchema,
-            prompt: `Analyze this webpage HTML: ${url}
+            prompt: `Analyze webpage: ${url}
 
-HTML:
-${currentHtml}
+HTML: ${currentHtml}
 
-LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX" in analytics array' : 'No LYTX script detected'}`,
+LYTX: ${lytxDetected ? 'Detected' : 'Not found'}
+Focus: title, framework, CMS, analytics`,
           }),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Page analysis timeout after 60 seconds')), 60000))
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Page analysis timeout after 30 seconds')), 30000))
         ]);
         
       } catch (error) {
@@ -89,34 +89,21 @@ LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX"
   private async generateRecommendationsWithRetry(basicPageData: any, lytxDetected: boolean): Promise<any> {
     const maxRetries = 2;
     const prompts = [
-      // Full detailed prompt
-      `You are a LYTX analytics expert. Generate LYTX implementation recommendations for this webpage.
-
-IMPORTANT IMPLEMENTATION RULES:
-1) The core tag MUST use: <script defer data-domain="<domain>" src="https://lytx.io/lytx.js?account=<ACCOUNT>"></script>
-2) For custom events, ALWAYS use: window.lytxApi.event('<ACCOUNT>', 'web', '<event_name>')
-3) Do NOT use 'lytrack', 'analytics.lytx.io', or other vendors. Use only LYTX patterns above.
-4) Provide minimal, copy-pasteable code that matches these rules.
-
-Page Info:
-- URL: ${basicPageData.url}
-- Title: ${basicPageData.title}
-- LYTX Detection: ${lytxDetected ? 'LYTX already installed - acknowledge in tagPlacements and avoid duplicating core tag' : 'LYTX not detected - include core tag placement'}
-
-Focus on conversion impact and provide clear implementation guidance.`,
-      
-      // Shorter prompt
-      `Generate LYTX analytics recommendations for: ${basicPageData.title}
+      // Shorter, focused prompt
+      `Generate LYTX analytics for: ${basicPageData.title}
 
 Rules:
-1) Core tag: <script defer data-domain="<domain>" src="https://lytx.io/lytx.js?account=<ACCOUNT>"></script>  
-2) Events: window.lytxApi.event('<ACCOUNT>', 'web', '<event_name>')
-3) ${lytxDetected ? 'LYTX already installed' : 'LYTX not detected'}
+1) Core: <script defer src="https://lytx.io/lytx.js?account=<ACCOUNT>"></script>
+2) Events: window.lytxApi.event('<ACCOUNT>', 'web', 'event_name')
+3) ${lytxDetected ? 'LYTX installed' : 'No LYTX'}
 
-Provide basic recommendations.`,
+Quick recommendations only.`,
       
-      // Minimal prompt  
-      `Create basic LYTX tracking recommendations for ${basicPageData.title}. ${lytxDetected ? 'LYTX detected' : 'No LYTX'}.`
+      // Minimal prompt
+      `LYTX setup for ${basicPageData.title}. ${lytxDetected ? 'Has LYTX' : 'No LYTX'}.`,
+      
+      // Ultra-minimal
+      `Basic LYTX for ${basicPageData.title}.`
     ];
     
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -129,7 +116,7 @@ Provide basic recommendations.`,
             schema: LYTXRecommendationSchema,
             prompt: prompts[attempt] || prompts[2]
           }),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('LYTX recommendations timeout after 60 seconds')), 60000))
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('LYTX recommendations timeout after 30 seconds')), 30000))
         ]);
         
       } catch (error) {

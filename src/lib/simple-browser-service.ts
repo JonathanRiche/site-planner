@@ -16,8 +16,8 @@ export interface PageContent {
 }
 
 const DEFAULT_BROWSER_OPTIONS = {
-  timeout: 30000,
-  waitFor: 1000,
+  timeout: 15000,
+  waitFor: 500,
 } as const;
 
 // Enhanced user agents to rotate through
