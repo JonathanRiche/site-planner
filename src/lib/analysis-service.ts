@@ -24,6 +24,129 @@ export class SiteAnalysisService {
     this.browserService = new SimpleCloudflareBrowserService();
   }
 
+  // Truncate HTML content to prevent OpenAI timeout
+  private truncateHtml(html: string, maxLength: number = 8000): string {
+    if (html.length <= maxLength) {
+      return html;
+    }
+    
+    // Try to truncate at a reasonable HTML boundary
+    let truncated = html.substring(0, maxLength);
+    const lastClosingTag = truncated.lastIndexOf('</');
+    
+    if (lastClosingTag > maxLength * 0.8) {
+      // If we have a reasonable closing tag near the end, truncate there
+      truncated = truncated.substring(0, lastClosingTag);
+    }
+    
+    return truncated + '\n... (truncated due to size)';
+  }
+
+  // Retry page analysis with progressively shorter HTML on timeout
+  private async analyzePageWithRetry(url: string, html: string, lytxDetected: boolean): Promise<any> {
+    const maxRetries = 2;
+    const htmlSizes = [8000, 4000, 2000]; // Try progressively smaller chunks
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const currentHtmlSize = htmlSizes[attempt] || 1000;
+      const currentHtml = this.truncateHtml(html, currentHtmlSize);
+      
+      try {
+        console.log(`🔄 Attempt ${attempt + 1}/${maxRetries + 1} with ${currentHtml.length} chars`);
+        
+        return await Promise.race([
+          generateObject({
+            model: openai(DEFAULT_MODEL),
+            schema: PageAnalysisSchema,
+            prompt: `Analyze this webpage HTML: ${url}
+
+HTML:
+${currentHtml}
+
+LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX" in analytics array' : 'No LYTX script detected'}`,
+          }),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Page analysis timeout after 60 seconds')), 60000))
+        ]);
+        
+      } catch (error) {
+        if (attempt === maxRetries) {
+          // Last attempt failed, throw the error
+          throw error;
+        }
+        
+        if (error instanceof Error && error.message.includes('timeout')) {
+          console.log(`⏰ Attempt ${attempt + 1} timed out, retrying with smaller HTML...`);
+          continue;
+        } else {
+          // Non-timeout error, don't retry
+          throw error;
+        }
+      }
+    }
+  }
+
+  // Retry LYTX recommendations with simpler prompts on timeout
+  private async generateRecommendationsWithRetry(basicPageData: any, lytxDetected: boolean): Promise<any> {
+    const maxRetries = 2;
+    const prompts = [
+      // Full detailed prompt
+      `You are a LYTX analytics expert. Generate LYTX implementation recommendations for this webpage.
+
+IMPORTANT IMPLEMENTATION RULES:
+1) The core tag MUST use: <script defer data-domain="<domain>" src="https://lytx.io/lytx.js?account=<ACCOUNT>"></script>
+2) For custom events, ALWAYS use: window.lytxApi.event('<ACCOUNT>', 'web', '<event_name>')
+3) Do NOT use 'lytrack', 'analytics.lytx.io', or other vendors. Use only LYTX patterns above.
+4) Provide minimal, copy-pasteable code that matches these rules.
+
+Page Info:
+- URL: ${basicPageData.url}
+- Title: ${basicPageData.title}
+- LYTX Detection: ${lytxDetected ? 'LYTX already installed - acknowledge in tagPlacements and avoid duplicating core tag' : 'LYTX not detected - include core tag placement'}
+
+Focus on conversion impact and provide clear implementation guidance.`,
+      
+      // Shorter prompt
+      `Generate LYTX analytics recommendations for: ${basicPageData.title}
+
+Rules:
+1) Core tag: <script defer data-domain="<domain>" src="https://lytx.io/lytx.js?account=<ACCOUNT>"></script>  
+2) Events: window.lytxApi.event('<ACCOUNT>', 'web', '<event_name>')
+3) ${lytxDetected ? 'LYTX already installed' : 'LYTX not detected'}
+
+Provide basic recommendations.`,
+      
+      // Minimal prompt  
+      `Create basic LYTX tracking recommendations for ${basicPageData.title}. ${lytxDetected ? 'LYTX detected' : 'No LYTX'}.`
+    ];
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🔄 LYTX attempt ${attempt + 1}/${maxRetries + 1} with ${attempt === 0 ? 'full' : attempt === 1 ? 'medium' : 'simple'} prompt`);
+        
+        return await Promise.race([
+          generateObject({
+            model: openai(DEFAULT_MODEL),
+            schema: LYTXRecommendationSchema,
+            prompt: prompts[attempt] || prompts[2]
+          }),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('LYTX recommendations timeout after 60 seconds')), 60000))
+        ]);
+        
+      } catch (error) {
+        if (attempt === maxRetries) {
+          throw error;
+        }
+        
+        if (error instanceof Error && error.message.includes('timeout')) {
+          console.log(`⏰ LYTX attempt ${attempt + 1} timed out, retrying with simpler prompt...`);
+          continue;
+        } else {
+          throw error;
+        }
+      }
+    }
+  }
+
   async analyzeSite(url: string): Promise<SiteAnalysisResult> {
     const analysisId = crypto.randomUUID();
     const startTime = Date.now();
@@ -56,21 +179,13 @@ export class SiteAnalysisService {
       if (lytxDetected) {
         console.log(`🔎 [${analysisId}] Detected existing LYTX script tag in HTML.`);
       }
+
+      // Truncate HTML to prevent timeout
+      const truncatedHtml = this.truncateHtml(pageContent.html);
+      console.log(`📝 [${analysisId}] HTML truncated from ${pageContent.html.length} to ${truncatedHtml.length} chars`);
       
-      // Start page analysis (will run in parallel with recommendations) 
-      const pageAnalysisPromise = Promise.race([
-        generateObject({
-          model: openai(DEFAULT_MODEL),
-          schema: PageAnalysisSchema,
-          prompt: `Analyze this webpage HTML: ${pageContent.url}
-
-HTML (truncated if needed):
-${pageContent.html.substring(0, 8000)} ${pageContent.html.length > 8000 ? '... (truncated)' : ''}
-
-LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX" in analytics array' : 'No LYTX script detected'}`,
-        }),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Page analysis timeout after 60 seconds')), 60000))
-      ]);
+      // Start page analysis with retry logic for timeouts
+      const pageAnalysisPromise = this.analyzePageWithRetry(pageContent.url, truncatedHtml, lytxDetected);
 
       // Step 3: Generate LYTX recommendations in parallel
       console.log(`🏷️ [${analysisId}] Step 3: Generating LYTX recommendations in parallel...`);
@@ -82,27 +197,7 @@ LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX"
         hasLytx: lytxDetected
       };
       
-      const recommendationsPromise = Promise.race([
-        generateObject({
-          model: openai(DEFAULT_MODEL),
-          schema: LYTXRecommendationSchema,
-          prompt: `You are a LYTX analytics expert. Generate LYTX implementation recommendations for this webpage.
-
-IMPORTANT IMPLEMENTATION RULES:
-1) The core tag MUST use: <script defer data-domain="<domain>" src="https://lytx.io/lytx.js?account=<ACCOUNT>"></script>
-2) For custom events, ALWAYS use: window.lytxApi.event('<ACCOUNT>', 'web', '<event_name>')
-3) Do NOT use 'lytrack', 'analytics.lytx.io', or other vendors. Use only LYTX patterns above.
-4) Provide minimal, copy-pasteable code that matches these rules.
-
-Page Info:
-- URL: ${basicPageData.url}
-- Title: ${basicPageData.title}
-- LYTX Detection: ${lytxDetected ? 'LYTX already installed - acknowledge in tagPlacements and avoid duplicating core tag' : 'LYTX not detected - include core tag placement'}
-
-Focus on conversion impact and provide clear implementation guidance.`,
-        }),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('LYTX recommendations timeout after 60 seconds')), 60000))
-      ]);
+      const recommendationsPromise = this.generateRecommendationsWithRetry(basicPageData, lytxDetected);
 
       // Wait for both AI calls to complete in parallel
       console.log(`⏳ [${analysisId}] Waiting for parallel AI analysis to complete...`);
@@ -292,13 +387,16 @@ Focus on conversion impact and provide clear implementation guidance.`,
       // Reuse the same AI steps as analyzeSite
       console.log(`🤖 [${analysisId}] Analyzing page structure with AI (provided HTML)...`);
       const lytxDetected = hasLytxScriptTag(pageContent.html);
+      const truncatedHtml = this.truncateHtml(pageContent.html);
+      console.log(`📝 [${analysisId}] HTML truncated from ${pageContent.html.length} to ${truncatedHtml.length} chars`);
+
       const pageAnalysisResult = await generateObject({
         model: openai(DEFAULT_MODEL),
         schema: PageAnalysisSchema,
         prompt: `Analyze this webpage HTML: ${pageContent.url}
 
-HTML (truncated if needed):
-${pageContent.html.substring(0, 8000)} ${pageContent.html.length > 8000 ? '... (truncated)' : ''}
+HTML:
+${truncatedHtml}
 
 LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX" in analytics array' : 'No LYTX script detected'}`,
       });

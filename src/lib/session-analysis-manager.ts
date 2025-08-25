@@ -137,35 +137,56 @@ export class SessionAnalysisManager extends DurableObject {
           }
         });
         
-        // Step 2: Analyze pages in parallel with timeout protection
+        // Step 2: Analyze pages in parallel with graceful failure handling
         console.log(`🤖 DO: Starting parallel analysis for session ${sessionId}`);
         const analysisService = new SiteAnalysisService();
         
-        // Add timeout protection (5 minutes max)
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Analysis timeout after 5 minutes')), 5 * 60 * 1000);
-        });
-        
-        const results = await Promise.race([
-          analysisService.analyzeMultiplePages(urlsToAnalyze, { 
-            concurrency: Math.min(urlsToAnalyze.length, 3)
-          }),
-          timeoutPromise
-        ]) as any[];
-        
-        console.log(`✅ DO: Parallel analysis completed for session ${sessionId} with ${results.length} results`);
-        
-        // Update with completed results
-        await updateSession({
-          status: 'completed',
-          progress: {
-            stage: 'completed',
-            current: results.length,
-            total: urlsToAnalyze.length,
-            message: `Analysis completed. Successfully analyzed ${results.length} out of ${urlsToAnalyze.length} pages.`
-          },
-          results
-        });
+        try {
+          // Add timeout protection (5 minutes max)
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Analysis timeout after 5 minutes')), 5 * 60 * 1000);
+          });
+          
+          const results = await Promise.race([
+            analysisService.analyzeMultiplePages(urlsToAnalyze, { 
+              concurrency: Math.min(urlsToAnalyze.length, 3)
+            }),
+            timeoutPromise
+          ]) as any[];
+          
+          console.log(`✅ DO: Parallel analysis completed for session ${sessionId} with ${results.length} results`);
+          
+          // Complete session with successful results (even if some failed)
+          await updateSession({
+            status: 'completed',
+            progress: {
+              stage: 'completed',
+              current: results.length,
+              total: urlsToAnalyze.length,
+              message: results.length > 0 
+                ? `Analysis completed. Successfully analyzed ${results.length} out of ${urlsToAnalyze.length} pages.`
+                : `Analysis completed but no pages could be processed successfully.`
+            },
+            results
+          });
+          
+        } catch (error) {
+          console.error(`⚠️ DO: Analysis failed for session ${sessionId}, attempting to get partial results:`, error);
+          
+          // Try to get any results that may have been completed before the timeout
+          // Complete the session with empty results rather than leaving it hanging
+          await updateSession({
+            status: 'completed',
+            progress: {
+              stage: 'completed', 
+              current: 0,
+              total: urlsToAnalyze.length,
+              message: `Analysis completed with errors. Unable to process pages due to: ${error instanceof Error ? error.message : 'Unknown error'}`
+            },
+            results: [],
+            error: error instanceof Error ? error.message : 'Analysis failed'
+          });
+        }
         
       } else {
         // Single page analysis
@@ -182,26 +203,44 @@ export class SessionAnalysisManager extends DurableObject {
         console.log(`🤖 DO: Starting single page analysis for session ${sessionId}`);
         const analysisService = new SiteAnalysisService();
         
-        // Add timeout protection (3 minutes max for single page)
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Single page analysis timeout after 3 minutes')), 3 * 60 * 1000);
-        });
-        
-        const result = await Promise.race([
-          analysisService.analyzeSite(sessionData.url),
-          timeoutPromise
-        ]) as any;
-        
-        await updateSession({
-          status: 'completed',
-          progress: {
-            stage: 'completed',
-            current: 1,
-            total: 1,
-            message: 'Analysis completed successfully!'
-          },
-          results: [result]
-        });
+        try {
+          // Add timeout protection (3 minutes max for single page)
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Single page analysis timeout after 3 minutes')), 3 * 60 * 1000);
+          });
+          
+          const result = await Promise.race([
+            analysisService.analyzeSite(sessionData.url),
+            timeoutPromise
+          ]) as any;
+          
+          await updateSession({
+            status: 'completed',
+            progress: {
+              stage: 'completed',
+              current: 1,
+              total: 1,
+              message: 'Analysis completed successfully!'
+            },
+            results: [result]
+          });
+          
+        } catch (error) {
+          console.error(`⚠️ DO: Single page analysis failed for session ${sessionId}:`, error);
+          
+          // Complete session with error but don't leave it hanging
+          await updateSession({
+            status: 'completed',
+            progress: {
+              stage: 'completed',
+              current: 0,
+              total: 1,
+              message: `Single page analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+            },
+            results: [],
+            error: error instanceof Error ? error.message : 'Analysis failed'
+          });
+        }
       }
       
       console.log(`✅ DO: Background analysis completed for session ${sessionId}`);
