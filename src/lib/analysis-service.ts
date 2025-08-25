@@ -57,17 +57,20 @@ export class SiteAnalysisService {
         console.log(`🔎 [${analysisId}] Detected existing LYTX script tag in HTML.`);
       }
       
-      // Start page analysis (will run in parallel with recommendations)
-      const pageAnalysisPromise = generateObject({
-        model: openai(DEFAULT_MODEL),
-        schema: PageAnalysisSchema,
-        prompt: `Analyze this webpage HTML: ${pageContent.url}
+      // Start page analysis (will run in parallel with recommendations) 
+      const pageAnalysisPromise = Promise.race([
+        generateObject({
+          model: openai(DEFAULT_MODEL),
+          schema: PageAnalysisSchema,
+          prompt: `Analyze this webpage HTML: ${pageContent.url}
 
 HTML (truncated if needed):
 ${pageContent.html.substring(0, 8000)} ${pageContent.html.length > 8000 ? '... (truncated)' : ''}
 
 LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX" in analytics array' : 'No LYTX script detected'}`,
-      });
+        }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Page analysis timeout after 60 seconds')), 60000))
+      ]);
 
       // Step 3: Generate LYTX recommendations in parallel
       console.log(`🏷️ [${analysisId}] Step 3: Generating LYTX recommendations in parallel...`);
@@ -79,10 +82,11 @@ LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX"
         hasLytx: lytxDetected
       };
       
-      const recommendationsPromise = generateObject({
-        model: openai(DEFAULT_MODEL),
-        schema: LYTXRecommendationSchema,
-        prompt: `You are a LYTX analytics expert. Generate LYTX implementation recommendations for this webpage.
+      const recommendationsPromise = Promise.race([
+        generateObject({
+          model: openai(DEFAULT_MODEL),
+          schema: LYTXRecommendationSchema,
+          prompt: `You are a LYTX analytics expert. Generate LYTX implementation recommendations for this webpage.
 
 IMPORTANT IMPLEMENTATION RULES:
 1) The core tag MUST use: <script defer data-domain="<domain>" src="https://lytx.io/lytx.js?account=<ACCOUNT>"></script>
@@ -96,7 +100,9 @@ Page Info:
 - LYTX Detection: ${lytxDetected ? 'LYTX already installed - acknowledge in tagPlacements and avoid duplicating core tag' : 'LYTX not detected - include core tag placement'}
 
 Focus on conversion impact and provide clear implementation guidance.`,
-      });
+        }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('LYTX recommendations timeout after 60 seconds')), 60000))
+      ]);
 
       // Wait for both AI calls to complete in parallel
       console.log(`⏳ [${analysisId}] Waiting for parallel AI analysis to complete...`);
