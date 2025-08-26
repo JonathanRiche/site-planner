@@ -21,6 +21,7 @@ export class SiteAnalysisService {
   private browserService: SimpleCloudflareBrowserService;
 
   constructor() {
+    //TODO: Determin if we need this on or should call it
     this.browserService = new SimpleCloudflareBrowserService();
   }
 
@@ -29,16 +30,16 @@ export class SiteAnalysisService {
     if (html.length <= maxLength) {
       return html;
     }
-    
+
     // Try to truncate at a reasonable HTML boundary
     let truncated = html.substring(0, maxLength);
     const lastClosingTag = truncated.lastIndexOf('</');
-    
+
     if (lastClosingTag > maxLength * 0.8) {
       // If we have a reasonable closing tag near the end, truncate there
       truncated = truncated.substring(0, lastClosingTag);
     }
-    
+
     return truncated + '\n... (truncated due to size)';
   }
 
@@ -46,14 +47,14 @@ export class SiteAnalysisService {
   private async analyzePageWithRetry(url: string, html: string, lytxDetected: boolean): Promise<any> {
     const maxRetries = 2;
     const htmlSizes = [3000, 1500, 800]; // Smaller chunks for faster processing
-    
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const currentHtmlSize = htmlSizes[attempt] || 1000;
       const currentHtml = this.truncateHtml(html, currentHtmlSize);
-      
+
       try {
         console.log(`🔄 Attempt ${attempt + 1}/${maxRetries + 1} with ${currentHtml.length} chars`);
-        
+
         return await Promise.race([
           generateObject({
             model: openai(DEFAULT_MODEL),
@@ -67,13 +68,13 @@ Focus: title, framework, CMS, analytics`,
           }),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Page analysis timeout after 30 seconds')), 30000))
         ]);
-        
+
       } catch (error) {
         if (attempt === maxRetries) {
           // Last attempt failed, throw the error
           throw error;
         }
-        
+
         if (error instanceof Error && error.message.includes('timeout')) {
           console.log(`⏰ Attempt ${attempt + 1} timed out, retrying with smaller HTML...`);
           continue;
@@ -98,18 +99,18 @@ Rules:
 3) ${lytxDetected ? 'LYTX installed' : 'No LYTX'}
 
 Quick recommendations only.`,
-      
+
       // Minimal prompt
       `LYTX setup for ${basicPageData.title}. ${lytxDetected ? 'Has LYTX' : 'No LYTX'}.`,
-      
+
       // Ultra-minimal
       `Basic LYTX for ${basicPageData.title}.`
     ];
-    
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         console.log(`🔄 LYTX attempt ${attempt + 1}/${maxRetries + 1} with ${attempt === 0 ? 'full' : attempt === 1 ? 'medium' : 'simple'} prompt`);
-        
+
         return await Promise.race([
           generateObject({
             model: openai(DEFAULT_MODEL),
@@ -118,12 +119,12 @@ Quick recommendations only.`,
           }),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('LYTX recommendations timeout after 30 seconds')), 30000))
         ]);
-        
+
       } catch (error) {
         if (attempt === maxRetries) {
           throw error;
         }
-        
+
         if (error instanceof Error && error.message.includes('timeout')) {
           console.log(`⏰ LYTX attempt ${attempt + 1} timed out, retrying with simpler prompt...`);
           continue;
@@ -133,57 +134,93 @@ Quick recommendations only.`,
       }
     }
   }
+  private async staticFetch(url: string) {
+    console.log(`Static 📡 Fetching ${url}...`);
+    const request = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'text/html',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
+      }
+    });
+    if (request.ok && request.status === 200) {
+      const html = await request.text();
+      return html;
+    } else {
+      return null
 
-  async analyzeSite(url: string): Promise<SiteAnalysisResult> {
+    }
+
+  }
+  async analyzeSite(url: string, usePuppeteer: boolean): Promise<SiteAnalysisResult> {
     const analysisId = crypto.randomUUID();
     const startTime = Date.now();
-    
+
     console.log(`🔍 [${analysisId}] Starting site analysis for: ${url}`, {
       timestamp: new Date().toISOString(),
       url
     });
-    
+
+
     try {
       // Step 1: Fetch the webpage HTML using Cloudflare Browser Rendering
       console.log(`🌐 [${analysisId}] Step 1: Fetching HTML content...`);
-      
-      const pageContent = await this.browserService.renderPage(url, {
-        takeScreenshot: false,
-        useCache: true,
-        blockResources: true,
-        optimizeForContent: true,
-      });
-      
+      let initial_html: string;
+      if (!usePuppeteer) {
+        const tryStatic = await this.staticFetch(url);
+        if (tryStatic) {
+          initial_html = tryStatic;
+        } else {
+          //TODO: Handle error on frontend ask user if they want to crawl with puppeteer
+          throw new Error('Static fetch failed');
+        }
+      } else {
+        const pageContent = await this.browserService.renderPage(url, {
+          takeScreenshot: false,
+          useCache: true,
+          blockResources: true,
+          optimizeForContent: true,
+        });
+
+        initial_html = pageContent.html;
+      }
+      // const pageContent = await this.browserService.renderPage(url, {
+      //   takeScreenshot: false,
+      //   useCache: true,
+      //   blockResources: true,
+      //   optimizeForContent: true,
+      // });
+
       console.log(`✅ [${analysisId}] HTML content fetched successfully`, {
-        htmlLength: pageContent.html.length,
-        title: pageContent.title,
-        loadTime: pageContent.metadata.loadTime
+        htmlLength: initial_html.length,
+        title: initial_html.slice(0, 10),
+        loadTime: "Not implemented"
       });
 
       // Step 2: Analyze page structure using AI with structured output
       console.log(`🤖 [${analysisId}] Step 2: Analyzing page structure with AI...`);
-      const lytxDetected = hasLytxScriptTag(pageContent.html);
+      const lytxDetected = hasLytxScriptTag(initial_html);
       if (lytxDetected) {
         console.log(`🔎 [${analysisId}] Detected existing LYTX script tag in HTML.`);
       }
 
       // Truncate HTML to prevent timeout
-      const truncatedHtml = this.truncateHtml(pageContent.html);
-      console.log(`📝 [${analysisId}] HTML truncated from ${pageContent.html.length} to ${truncatedHtml.length} chars`);
-      
+      const truncatedHtml = this.truncateHtml(initial_html);
+      console.log(`📝 [${analysisId}] HTML truncated from ${initial_html} to ${truncatedHtml.length} chars`);
+
       // Start page analysis with retry logic for timeouts
-      const pageAnalysisPromise = this.analyzePageWithRetry(pageContent.url, truncatedHtml, lytxDetected);
+      const pageAnalysisPromise = this.analyzePageWithRetry(url, truncatedHtml, lytxDetected);
 
       // Step 3: Generate LYTX recommendations in parallel
       console.log(`🏷️ [${analysisId}] Step 3: Generating LYTX recommendations in parallel...`);
-      
+
       // This will create a placeholder analysis for the recommendations prompt
       const basicPageData = {
-        title: pageContent.title || 'Unknown Page',
-        url: pageContent.url,
+        title: url || 'Unknown Page',
+        url: url,
         hasLytx: lytxDetected
       };
-      
+
       const recommendationsPromise = this.generateRecommendationsWithRetry(basicPageData, lytxDetected);
 
       // Wait for both AI calls to complete in parallel
@@ -192,10 +229,10 @@ Quick recommendations only.`,
         pageAnalysisPromise,
         recommendationsPromise
       ]);
-      
+
       // Extract structured data from AI response
       console.log(`📊 [${analysisId}] Processing structured analysis response...`);
-      
+
       let pageAnalysis: PageAnalysis = pageAnalysisResult.object;
 
       // Ensure analytics reflects detected LYTX script
@@ -214,7 +251,7 @@ Quick recommendations only.`,
 
       // Extract structured recommendations from AI response
       console.log(`📋 [${analysisId}] Processing LYTX recommendations...`);
-      
+
       let lytxRecommendations: LYTXRecommendation = recommendationsResult.object;
 
       // Enforce vendor-specific implementation details post-parse as a safeguard
@@ -245,14 +282,14 @@ Quick recommendations only.`,
 
       console.log(`✅ [${analysisId}] LYTX recommendations completed successfully:`, {
         tagPlacementsCount: lytxRecommendations.tagPlacements.length,
-          trackingEventsCount: lytxRecommendations.trackingEvents.length,
-          optimizationsCount: lytxRecommendations.optimizations.length
-        });
+        trackingEventsCount: lytxRecommendations.trackingEvents.length,
+        optimizationsCount: lytxRecommendations.optimizations.length
+      });
 
       // Step 4: Combine results
       console.log(`📦 [${analysisId}] Step 4: Combining results...`);
       const totalTime = Date.now() - startTime;
-      
+
       const analysisResult: SiteAnalysisResult = {
         pageAnalysis: {
           ...pageAnalysis,
@@ -272,7 +309,7 @@ Quick recommendations only.`,
       console.log(`🏁 [${analysisId}] Site analysis completed successfully in ${totalTime}ms`, {
         url,
         totalTime: `${totalTime}ms`,
-        htmlSize: pageContent.html.length,
+        htmlSize: initial_html.length,
         pageTitle: pageAnalysis.title,
         recommendationsGenerated: lytxRecommendations.tagPlacements.length + lytxRecommendations.trackingEvents.length + lytxRecommendations.optimizations.length
       });
@@ -293,17 +330,18 @@ Quick recommendations only.`,
 
   async analyzeMultiplePages(urls: string[], options: {
     concurrency?: number;
-  } = {}): Promise<SiteAnalysisResult[]> {
-    const { concurrency = 3 } = options; // Default to 3 concurrent requests
+    usePuppeteer: boolean;
+  }): Promise<SiteAnalysisResult[]> {
+    const { concurrency = 3, usePuppeteer } = options; // Default to 3 concurrent requests
     const batchId = crypto.randomUUID();
-    
+
     console.log(`🚀 [${batchId}] Starting parallel analysis of ${urls.length} URLs with concurrency=${concurrency}`);
-    
+
     // Use Promise.allSettled to process all URLs in parallel while handling failures gracefully
     const promises = urls.map(async (url, index) => {
       try {
         console.log(`📄 [${batchId}] Starting analysis ${index + 1}/${urls.length}: ${url}`);
-        const result = await this.analyzeSite(url);
+        const result = await this.analyzeSite(url, usePuppeteer);
         console.log(`✅ [${batchId}] Completed analysis ${index + 1}/${urls.length}: ${url}`);
         return { status: 'fulfilled' as const, value: result, url };
       } catch (error) {
@@ -315,18 +353,18 @@ Quick recommendations only.`,
     // Process with controlled concurrency to avoid overwhelming the system
     const results: SiteAnalysisResult[] = [];
     const batches: Promise<any>[][] = [];
-    
+
     // Split into batches of concurrent requests
     for (let i = 0; i < promises.length; i += concurrency) {
       batches.push(promises.slice(i, i + concurrency));
     }
-    
+
     for (const [batchIndex, batch] of batches.entries()) {
       console.log(`🔄 [${batchId}] Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} URLs)`);
       const batchStartTime = Date.now();
-      
+
       const batchResults = await Promise.allSettled(batch);
-      
+
       // Extract successful results
       for (const promiseResult of batchResults) {
         if (promiseResult.status === 'fulfilled' && promiseResult.value.status === 'fulfilled') {
@@ -334,13 +372,13 @@ Quick recommendations only.`,
         }
         // Errors are already logged in the individual promises above
       }
-      
+
       console.log(`✅ [${batchId}] Batch ${batchIndex + 1}/${batches.length} completed in ${Date.now() - batchStartTime}ms`);
     }
-    
+
     const successCount = results.length;
     const failureCount = urls.length - successCount;
-    
+
     console.log(`🏁 [${batchId}] Parallel analysis completed:`, {
       totalUrls: urls.length,
       successful: successCount,
@@ -348,7 +386,7 @@ Quick recommendations only.`,
       successRate: `${Math.round((successCount / urls.length) * 100)}%`,
       concurrency
     });
-    
+
     return results;
   }
 

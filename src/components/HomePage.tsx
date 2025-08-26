@@ -51,6 +51,7 @@ export function HomePage() {
   const [url, setUrl] = useState('');
   const [lytxKey, setLytxKey] = useState('');
   const [crawl, setCrawl] = useState<boolean>(true);
+  const [usePuppeteer, setUsePuppeteer] = useState<boolean>(false);
   const [maxPages, setMaxPages] = useState<number>(5);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<AnalysisResult[] | null>(null);
@@ -76,28 +77,29 @@ export function HomePage() {
       const sessionRes = await fetch('/api/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          url, 
-          crawl, 
+        body: JSON.stringify({
+          url,
+          crawl,
           maxPages,
+          usePuppeteer,
           concurrency: 3 // Use configurable concurrency
         }),
       });
-      
+
       if (!sessionRes.ok) {
         let detail = sessionRes.statusText;
         try {
           const data = await sessionRes.json() as any;
           if (data?.error) detail = data.error;
-        } catch {}
+        } catch { }
         throw new Error(`Session creation failed: ${detail}`);
       }
-      
+
       const { sessionId } = await sessionRes.json() as { sessionId: string };
-      
+
       // Redirect to session page immediately
       window.location.href = `/session/${sessionId}`;
-      
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
       setLoading(false);
@@ -116,7 +118,7 @@ export function HomePage() {
             Site Planner
           </h1>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            Intelligent website analysis for optimal LYTX.io analytics integration. 
+            Intelligent website analysis for optimal LYTX.io analytics integration.
             Get comprehensive recommendations for tag placement, tracking, and optimization.
           </p>
         </header>
@@ -149,6 +151,17 @@ export function HomePage() {
                 />
                 Crawl internal links
               </label>
+              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={usePuppeteer}
+                  onChange={(e) => setUsePuppeteer(e.target.checked)}
+                  disabled={loading}
+                />
+                Use Puppeteer
+              </label>
+
               <div className="flex items-center gap-2">
                 <label htmlFor="maxPages" className="text-sm text-gray-700">Max pages</label>
                 <input
@@ -215,7 +228,7 @@ export function HomePage() {
                   });
                   if (!res.ok) {
                     let detail = res.statusText;
-                    try { const data = await res.json() as any; if (data?.error) detail = data.error; } catch {}
+                    try { const data = await res.json() as any; if (data?.error) detail = data.error; } catch { }
                     throw new Error(`Analyze HTML failed: ${detail}`);
                   }
                   const single: AnalysisResult = await res.json();
@@ -258,7 +271,7 @@ export function HomePage() {
                 <div className="mt-2 text-sm text-red-700">{error}</div>
                 {(/blocked|captcha/i.test(error)) && (
                   <div className="mt-3 text-sm text-red-600">
-                    <strong>Bot Protection Detected:</strong> This website is using security measures that may block automated analysis. 
+                    <strong>Bot Protection Detected:</strong> This website is using security measures that may block automated analysis.
                     This is common with sites protected by Cloudflare, Imperva, or other security services.
                     <br />
                     <em>Tips: Try analyzing a different page on the same domain, wait a few minutes and retry, or disable crawl and analyze a single URL. If you control the site, temporarily whitelist your requests.</em>
@@ -316,9 +329,8 @@ export function HomePage() {
                     key={i}
                     type="button"
                     onClick={() => setSelectedIndex(i)}
-                    className={`text-left w-full border rounded-lg p-4 transition-colors cursor-pointer ${
-                      i === selectedIndex ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-                    }`}
+                    className={`text-left w-full border rounded-lg p-4 transition-colors cursor-pointer ${i === selectedIndex ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                      }`}
                   >
                     <div className="text-xs text-gray-500 mb-1">{new URL(r.pageAnalysis.url).hostname}</div>
                     <div className="font-medium text-gray-900 truncate">{r.pageAnalysis.title || r.pageAnalysis.url}</div>
@@ -329,133 +341,130 @@ export function HomePage() {
             )}
 
             <section className="space-y-6">
-                <div className="bg-white rounded-lg shadow-md p-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <h2 className="text-2xl font-bold text-gray-900">Page Analysis</h2>
-                    {results && results.length > 1 && (
-                      <span className="text-sm text-gray-500">{selectedIndex + 1} of {results.length}</span>
-                    )}
-                  </div>
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-800 mb-2">Basic Information</h3>
-                      <p><strong>Title:</strong> {selectedResult.pageAnalysis.title}</p>
-                      {selectedResult.pageAnalysis.description && (
-                        <p><strong>Description:</strong> {selectedResult.pageAnalysis.description}</p>
-                      )}
-                      <p><strong>URL:</strong> {selectedResult.pageAnalysis.url}</p>
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-800 mb-2">Technical Stack</h3>
-                      {selectedResult.pageAnalysis.technicalStack.framework && (
-                        <p><strong>Framework:</strong> {selectedResult.pageAnalysis.technicalStack.framework}</p>
-                      )}
-                      {selectedResult.pageAnalysis.technicalStack.cms && (
-                        <p><strong>CMS:</strong> {selectedResult.pageAnalysis.technicalStack.cms}</p>
-                      )}
-                      <p><strong>Analytics:</strong> {selectedResult.pageAnalysis.technicalStack.analytics.join(', ') || 'None detected'}</p>
-                    </div>
-                  </div>
+              <div className="bg-white rounded-lg shadow-md p-6">
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-2xl font-bold text-gray-900">Page Analysis</h2>
+                  {results && results.length > 1 && (
+                    <span className="text-sm text-gray-500">{selectedIndex + 1} of {results.length}</span>
+                  )}
                 </div>
-
-                <div className="bg-white rounded-lg shadow-md p-6">
-                  <h2 className="text-2xl font-bold text-gray-900 mb-4">LYTX Implementation Recommendations</h2>
-                  <div className="space-y-6">
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-800 mb-3">Tag Placements</h3>
-                      <div className="space-y-4">
-                        {selectedResult.lytxRecommendations.tagPlacements.map((placement, index) => (
-                          <div key={index} className="border border-gray-200 rounded-lg p-4">
-                            <div className="flex justify-between items-start mb-2">
-                              <h4 className="font-medium text-gray-800">Location: {placement.location}</h4>
-                              <span className={`px-2 py-1 text-xs rounded ${
-                                placement.priority === 'high' ? 'bg-red-100 text-red-800'
-                                  : placement.priority === 'medium' ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-green-100 text-green-800'
-                              }`}>
-                                {placement.priority} priority
-                              </span>
-                            </div>
-                            <p className="text-sm text-gray-600 mb-3">{placement.reason}</p>
-                            <div className="relative">
-                              <pre className="bg-gray-50 p-3 rounded text-sm overflow-x-auto">
-                                <code>{placement.code}</code>
-                              </pre>
-                              <div className="absolute top-2 right-2">
-                                <CopyButton text={placement.code} />
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-800 mb-3">Tracking Events</h3>
-                      <div className="space-y-3">
-                    {selectedResult.lytxRecommendations.trackingEvents.map((event, index) => (
-                      <div key={index} className="border border-gray-200 rounded-lg p-4">
-                        <div className="flex items-start justify-between gap-4">
-                          <div>
-                            <h4 className="font-medium text-gray-800">{event.event}</h4>
-                            <p className="text-sm text-gray-600 mb-2">Trigger: {event.trigger}</p>
-                            {event.conversionImpact && (
-                              <div className="text-xs inline-flex items-center gap-2 mb-2">
-                                <span className={`px-2 py-1 rounded ${
-                                  event.conversionImpact === 'high' ? 'bg-red-100 text-red-800' :
-                                  event.conversionImpact === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                                  'bg-green-100 text-green-800'
-                                }`}>
-                                  {event.conversionImpact} conversion impact
-                                </span>
-                                {event.conversionReason && (
-                                  <span className="text-gray-600">{event.conversionReason}</span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="relative">
-                          <pre className="bg-gray-50 p-2 rounded text-sm overflow-x-auto">
-                            <code>{event.implementation}</code>
-                          </pre>
-                          <div className="absolute top-2 right-2">
-                            <CopyButton text={event.implementation} small />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-800 mb-3">Optimization Suggestions</h3>
-                      <div className="space-y-3">
-                        {selectedResult.lytxRecommendations.optimizations.map((optimization, index) => (
-                          <div key={index} className="border border-gray-200 rounded-lg p-4">
-                            <div className="flex justify-between items-start mb-2">
-                              <h4 className="font-medium text-gray-800 capitalize">{optimization.category}</h4>
-                              <span className={`px-2 py-1 text-xs rounded ${
-                                optimization.impact === 'high' ? 'bg-red-100 text-red-800'
-                                  : optimization.impact === 'medium' ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-green-100 text-green-800'
-                              }`}>
-                                {optimization.impact} impact
-                              </span>
-                            </div>
-                            <p className="text-sm text-gray-600">{optimization.suggestion}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                {lytxKey && (
+                <div className="grid md:grid-cols-2 gap-6">
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-800 mb-3">Generated Embed Snippet</h3>
-                  <EmbedSnippet url={selectedResult.pageAnalysis.url} accountKey={lytxKey} />
+                    <h3 className="text-lg font-semibold text-gray-800 mb-2">Basic Information</h3>
+                    <p><strong>Title:</strong> {selectedResult.pageAnalysis.title}</p>
+                    {selectedResult.pageAnalysis.description && (
+                      <p><strong>Description:</strong> {selectedResult.pageAnalysis.description}</p>
+                    )}
+                    <p><strong>URL:</strong> {selectedResult.pageAnalysis.url}</p>
                   </div>
-                )}
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-800 mb-2">Technical Stack</h3>
+                    {selectedResult.pageAnalysis.technicalStack.framework && (
+                      <p><strong>Framework:</strong> {selectedResult.pageAnalysis.technicalStack.framework}</p>
+                    )}
+                    {selectedResult.pageAnalysis.technicalStack.cms && (
+                      <p><strong>CMS:</strong> {selectedResult.pageAnalysis.technicalStack.cms}</p>
+                    )}
+                    <p><strong>Analytics:</strong> {selectedResult.pageAnalysis.technicalStack.analytics.join(', ') || 'None detected'}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow-md p-6">
+                <h2 className="text-2xl font-bold text-gray-900 mb-4">LYTX Implementation Recommendations</h2>
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-800 mb-3">Tag Placements</h3>
+                    <div className="space-y-4">
+                      {selectedResult.lytxRecommendations.tagPlacements.map((placement, index) => (
+                        <div key={index} className="border border-gray-200 rounded-lg p-4">
+                          <div className="flex justify-between items-start mb-2">
+                            <h4 className="font-medium text-gray-800">Location: {placement.location}</h4>
+                            <span className={`px-2 py-1 text-xs rounded ${placement.priority === 'high' ? 'bg-red-100 text-red-800'
+                              : placement.priority === 'medium' ? 'bg-yellow-100 text-yellow-800'
+                                : 'bg-green-100 text-green-800'
+                              }`}>
+                              {placement.priority} priority
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-600 mb-3">{placement.reason}</p>
+                          <div className="relative">
+                            <pre className="bg-gray-50 p-3 rounded text-sm overflow-x-auto">
+                              <code>{placement.code}</code>
+                            </pre>
+                            <div className="absolute top-2 right-2">
+                              <CopyButton text={placement.code} />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-800 mb-3">Tracking Events</h3>
+                    <div className="space-y-3">
+                      {selectedResult.lytxRecommendations.trackingEvents.map((event, index) => (
+                        <div key={index} className="border border-gray-200 rounded-lg p-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <h4 className="font-medium text-gray-800">{event.event}</h4>
+                              <p className="text-sm text-gray-600 mb-2">Trigger: {event.trigger}</p>
+                              {event.conversionImpact && (
+                                <div className="text-xs inline-flex items-center gap-2 mb-2">
+                                  <span className={`px-2 py-1 rounded ${event.conversionImpact === 'high' ? 'bg-red-100 text-red-800' :
+                                    event.conversionImpact === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                                      'bg-green-100 text-green-800'
+                                    }`}>
+                                    {event.conversionImpact} conversion impact
+                                  </span>
+                                  {event.conversionReason && (
+                                    <span className="text-gray-600">{event.conversionReason}</span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="relative">
+                            <pre className="bg-gray-50 p-2 rounded text-sm overflow-x-auto">
+                              <code>{event.implementation}</code>
+                            </pre>
+                            <div className="absolute top-2 right-2">
+                              <CopyButton text={event.implementation} small />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-800 mb-3">Optimization Suggestions</h3>
+                    <div className="space-y-3">
+                      {selectedResult.lytxRecommendations.optimizations.map((optimization, index) => (
+                        <div key={index} className="border border-gray-200 rounded-lg p-4">
+                          <div className="flex justify-between items-start mb-2">
+                            <h4 className="font-medium text-gray-800 capitalize">{optimization.category}</h4>
+                            <span className={`px-2 py-1 text-xs rounded ${optimization.impact === 'high' ? 'bg-red-100 text-red-800'
+                              : optimization.impact === 'medium' ? 'bg-yellow-100 text-yellow-800'
+                                : 'bg-green-100 text-green-800'
+                              }`}>
+                              {optimization.impact} impact
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-600">{optimization.suggestion}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {lytxKey && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800 mb-3">Generated Embed Snippet</h3>
+                  <EmbedSnippet url={selectedResult.pageAnalysis.url} accountKey={lytxKey} />
+                </div>
+              )}
             </section>
           </div>
         )}

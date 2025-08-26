@@ -18,7 +18,7 @@ function extractInternalLinks(html: string, baseUrl: string, limit: number): str
       if (/\.(png|jpg|jpeg|gif|svg|webp|ico|css|js|pdf|zip|rar|7z|mp4|mp3)(\?.*)?$/i.test(url.pathname)) continue;
       url.hash = '';
       hrefs.add(url.toString());
-    } catch {}
+    } catch { }
   }
 
   const seenPath = new Set<string>();
@@ -52,12 +52,14 @@ export default async function crawlLinksHandler({ request }: RequestInfo<any, Ap
       });
     }
 
+
     const browser = new OptimizedCloudflareBrowserService();
-    const page = await browser.renderPage(rootUrl, { 
-      useCache: true, 
-      blockResources: true, 
-      optimizeForContent: true 
+    const page = await browser.renderPage(rootUrl, {
+      useCache: true,
+      blockResources: true,
+      optimizeForContent: true
     });
+
     const allUrls = extractInternalLinks(page.html, page.url, 100);
     const selected = [new URL(rootUrl).toString(), ...allUrls.slice(0, Math.max(0, maxPages - 1))];
     return new Response(JSON.stringify({ urls: selected, allUrls }), {

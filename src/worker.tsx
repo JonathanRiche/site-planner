@@ -23,6 +23,7 @@ export default defineApp([
 		route("/api/crawl-links", crawlLinksHandler),
 		route("/api/analyze-html", analyzeHtmlHandler),
 		route("/api/browser-sessions", browserSessionsHandler),
+		//NOTE: Entry point for session analysis
 		route("/api/session", sessionHandler),
 		route("/api/session/:sessionId", sessionHandler),
 	]),

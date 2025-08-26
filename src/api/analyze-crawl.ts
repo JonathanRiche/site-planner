@@ -72,25 +72,27 @@ export default async function analyzeCrawlHandler({ request }: RequestInfo<any, 
 
     // Normalize URL to ensure consistent caching
     const normalizedRootUrl = new URL(rootUrl).toString();
-    
+
     const browser = new OptimizedCloudflareBrowserService();
-    const page = await browser.renderPage(normalizedRootUrl, { 
-      useCache: true, 
-      blockResources: true, 
-      optimizeForContent: true 
+    const page = await browser.renderPage(normalizedRootUrl, {
+      useCache: true,
+      blockResources: true,
+      optimizeForContent: true
     });
 
     const internalLinks = extractInternalLinks(page.html, page.url, maxPages - 1);
 
     // Include root first, but avoid duplicate if already in internalLinks
     const rootUrlInLinks = internalLinks.includes(normalizedRootUrl);
-    const urlsToAnalyze = rootUrlInLinks 
+    const urlsToAnalyze = rootUrlInLinks
       ? internalLinks.slice(0, maxPages)  // Root already included
       : [normalizedRootUrl, ...internalLinks.slice(0, maxPages - 1)]; // Add root first
 
     const analysisService = new SiteAnalysisService();
     // Use parallel processing with configurable concurrency for Cloudflare Workers
-    const results = await analysisService.analyzeMultiplePages(urlsToAnalyze, { 
+    //TODO: Pass as props
+    const results = await analysisService.analyzeMultiplePages(urlsToAnalyze, {
+      usePuppeteer: false,
       concurrency: Math.min(urlsToAnalyze.length, concurrency) // Use configured concurrency, or fewer if less URLs
     });
 
