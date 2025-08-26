@@ -1,14 +1,12 @@
 import { generateObject } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { SimpleCloudflareBrowserService } from './simple-browser-service';
-import { SiteAnalysisResult, PageAnalysis, LYTXRecommendation, PageAnalysisSchema, LYTXRecommendationSchema } from './types';
+import { SiteAnalysisResult } from './types';
 import { DEFAULT_MODEL } from './defaults';
 
 const openai = createOpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-
-
 
 // Detect presence of LYTX script in raw HTML
 function hasLytxScriptTag(html: string): boolean {
@@ -21,11 +19,10 @@ export class SiteAnalysisService {
   private browserService: SimpleCloudflareBrowserService;
 
   constructor() {
-    //TODO: Determin if we need this on or should call it
     this.browserService = new SimpleCloudflareBrowserService();
   }
 
-  // Truncate HTML content to prevent OpenAI timeout - optimized for speed
+  // Simple HTML truncation like your script
   private truncateHtml(html: string, maxLength: number = 3000): string {
     if (html.length <= maxLength) {
       return html;
@@ -43,97 +40,7 @@ export class SiteAnalysisService {
     return truncated + '\n... (truncated due to size)';
   }
 
-  // Retry page analysis with progressively shorter HTML on timeout - optimized for speed
-  private async analyzePageWithRetry(url: string, html: string, lytxDetected: boolean): Promise<any> {
-    const maxRetries = 2;
-    const htmlSizes = [3000, 1500, 800]; // Smaller chunks for faster processing
-
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      const currentHtmlSize = htmlSizes[attempt] || 1000;
-      const currentHtml = this.truncateHtml(html, currentHtmlSize);
-
-      try {
-        console.log(`🔄 Attempt ${attempt + 1}/${maxRetries + 1} with ${currentHtml.length} chars`);
-
-        return await Promise.race([
-          generateObject({
-            model: openai(DEFAULT_MODEL),
-            schema: PageAnalysisSchema,
-            prompt: `Analyze webpage: ${url}
-
-HTML: ${currentHtml}
-
-LYTX: ${lytxDetected ? 'Detected' : 'Not found'}
-Focus: title, framework, CMS, analytics`,
-          }),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Page analysis timeout after 30 seconds')), 30000))
-        ]);
-
-      } catch (error) {
-        if (attempt === maxRetries) {
-          // Last attempt failed, throw the error
-          throw error;
-        }
-
-        if (error instanceof Error && error.message.includes('timeout')) {
-          console.log(`⏰ Attempt ${attempt + 1} timed out, retrying with smaller HTML...`);
-          continue;
-        } else {
-          // Non-timeout error, don't retry
-          throw error;
-        }
-      }
-    }
-  }
-
-  // Retry LYTX recommendations with simpler prompts on timeout
-  private async generateRecommendationsWithRetry(basicPageData: any, lytxDetected: boolean): Promise<any> {
-    const maxRetries = 2;
-    const prompts = [
-      // Shorter, focused prompt
-      `Generate LYTX analytics for: ${basicPageData.title}
-
-Rules:
-1) Core: <script defer src="https://lytx.io/lytx.js?account=<ACCOUNT>"></script>
-2) Events: window.lytxApi.event('<ACCOUNT>', 'web', 'event_name')
-3) ${lytxDetected ? 'LYTX installed' : 'No LYTX'}
-
-Quick recommendations only.`,
-
-      // Minimal prompt
-      `LYTX setup for ${basicPageData.title}. ${lytxDetected ? 'Has LYTX' : 'No LYTX'}.`,
-
-      // Ultra-minimal
-      `Basic LYTX for ${basicPageData.title}.`
-    ];
-
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        console.log(`🔄 LYTX attempt ${attempt + 1}/${maxRetries + 1} with ${attempt === 0 ? 'full' : attempt === 1 ? 'medium' : 'simple'} prompt`);
-
-        return await Promise.race([
-          generateObject({
-            model: openai(DEFAULT_MODEL),
-            schema: LYTXRecommendationSchema,
-            prompt: prompts[attempt] || prompts[2]
-          }),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('LYTX recommendations timeout after 30 seconds')), 30000))
-        ]);
-
-      } catch (error) {
-        if (attempt === maxRetries) {
-          throw error;
-        }
-
-        if (error instanceof Error && error.message.includes('timeout')) {
-          console.log(`⏰ LYTX attempt ${attempt + 1} timed out, retrying with simpler prompt...`);
-          continue;
-        } else {
-          throw error;
-        }
-      }
-    }
-  }
+  // Simple static fetch like your script
   private async staticFetch(url: string) {
     console.log(`Static 📡 Fetching ${url}...`);
     const request = await fetch(url, {
@@ -143,15 +50,17 @@ Quick recommendations only.`,
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
       }
     });
-    if (request.ok && request.status === 200) {
+    if (request.ok) {
       const html = await request.text();
+      console.log("Content ok", request.status, html.length);
       return html;
     } else {
-      return null
-
+      console.log('Error fetching static content');
+      return null;
     }
-
   }
+
+  // Simplified single AI call analysis like your script
   async analyzeSite(url: string, usePuppeteer: boolean): Promise<SiteAnalysisResult> {
     const analysisId = crypto.randomUUID();
     const startTime = Date.now();
@@ -161,17 +70,16 @@ Quick recommendations only.`,
       url
     });
 
-
     try {
-      // Step 1: Fetch the webpage HTML using Cloudflare Browser Rendering
+      // Step 1: Fetch HTML content
       console.log(`🌐 [${analysisId}] Step 1: Fetching HTML content...`);
-      let initial_html: string;
+      let html: string;
+      
       if (!usePuppeteer) {
         const tryStatic = await this.staticFetch(url);
         if (tryStatic) {
-          initial_html = tryStatic;
+          html = tryStatic;
         } else {
-          //TODO: Handle error on frontend ask user if they want to crawl with puppeteer
           throw new Error('Static fetch failed');
         }
       } else {
@@ -181,127 +89,38 @@ Quick recommendations only.`,
           blockResources: true,
           optimizeForContent: true,
         });
-
-        initial_html = pageContent.html;
+        html = pageContent.html;
       }
-      // const pageContent = await this.browserService.renderPage(url, {
-      //   takeScreenshot: false,
-      //   useCache: true,
-      //   blockResources: true,
-      //   optimizeForContent: true,
-      // });
 
       console.log(`✅ [${analysisId}] HTML content fetched successfully`, {
-        htmlLength: initial_html.length,
-        title: initial_html.slice(0, 10),
-        loadTime: "Not implemented"
+        htmlLength: html.length,
       });
 
-      // Step 2: Analyze page structure using AI with structured output
-      console.log(`🤖 [${analysisId}] Step 2: Analyzing page structure with AI...`);
-      const lytxDetected = hasLytxScriptTag(initial_html);
-      if (lytxDetected) {
-        console.log(`🔎 [${analysisId}] Detected existing LYTX script tag in HTML.`);
-      }
+      // Step 2: Single AI call for complete analysis (like your script)
+      console.log(`🤖 [${analysisId}] Step 2: Running single AI analysis...`);
+      
+      const truncatedHtml = this.truncateHtml(html);
+      const lytxDetected = hasLytxScriptTag(html);
+      
+      console.log(`📝 [${analysisId}] HTML truncated from ${html.length} to ${truncatedHtml.length} chars`);
+      console.log(`🔎 [${analysisId}] LYTX Detection: ${lytxDetected ? 'Found' : 'Not found'}`);
 
-      // Truncate HTML to prevent timeout
-      const truncatedHtml = this.truncateHtml(initial_html);
-      console.log(`📝 [${analysisId}] HTML truncated from ${initial_html} to ${truncatedHtml.length} chars`);
+      const analysisResult = await generateObject({
+        model: openai(DEFAULT_MODEL),
+        schema: SiteAnalysisResult,
+        prompt: `Analyze this webpage HTML: ${url}
 
-      // Start page analysis with retry logic for timeouts
-      const pageAnalysisPromise = this.analyzePageWithRetry(url, truncatedHtml, lytxDetected);
+HTML:
+${truncatedHtml}
 
-      // Step 3: Generate LYTX recommendations in parallel
-      console.log(`🏷️ [${analysisId}] Step 3: Generating LYTX recommendations in parallel...`);
-
-      // This will create a placeholder analysis for the recommendations prompt
-      const basicPageData = {
-        title: url || 'Unknown Page',
-        url: url,
-        hasLytx: lytxDetected
-      };
-
-      const recommendationsPromise = this.generateRecommendationsWithRetry(basicPageData, lytxDetected);
-
-      // Wait for both AI calls to complete in parallel
-      console.log(`⏳ [${analysisId}] Waiting for parallel AI analysis to complete...`);
-      const [pageAnalysisResult, recommendationsResult] = await Promise.all([
-        pageAnalysisPromise,
-        recommendationsPromise
-      ]);
-
-      // Extract structured data from AI response
-      console.log(`📊 [${analysisId}] Processing structured analysis response...`);
-
-      let pageAnalysis: PageAnalysis = pageAnalysisResult.object;
-
-      // Ensure analytics reflects detected LYTX script
-      if (lytxDetected && !pageAnalysis.technicalStack.analytics.includes('LYTX')) {
-        pageAnalysis.technicalStack.analytics = [...pageAnalysis.technicalStack.analytics, 'LYTX'];
-      }
-      console.log(`✅ [${analysisId}] Page analysis completed successfully:`, {
-        title: pageAnalysis.title,
-        headingsCount: pageAnalysis.headings.length,
-        framework: pageAnalysis.technicalStack.framework,
-        cms: pageAnalysis.technicalStack.cms,
-        analyticsCount: pageAnalysis.technicalStack.analytics.length
+LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX" in analytics array' : 'No LYTX script detected'}`,
       });
 
-      // (LYTX recommendations are now generated in parallel above)
-
-      // Extract structured recommendations from AI response
-      console.log(`📋 [${analysisId}] Processing LYTX recommendations...`);
-
-      let lytxRecommendations: LYTXRecommendation = recommendationsResult.object;
-
-      // Enforce vendor-specific implementation details post-parse as a safeguard
-      lytxRecommendations.tagPlacements = lytxRecommendations.tagPlacements.map(p => ({
-        ...p,
-        code: p.code
-          .replace(/analytics\.lytx\.io\S*/gi, 'lytx.io/lytx.js?account=<ACCOUNT>')
-          .replace(/lytrack\s*\(/gi, "window.lytxApi.event('<ACCOUNT>', 'web', ")
-      }));
-      lytxRecommendations.trackingEvents = lytxRecommendations.trackingEvents.map(e => ({
-        ...e,
-        implementation: e.implementation
-          .replace(/lytrack\s*\(/gi, "window.lytxApi.event('<ACCOUNT>', 'web', ")
-      }));
-      // If LYTX already installed, avoid duplicate core tag recommendations and add acknowledgement
-      if (pageAnalysis.technicalStack.analytics.includes('LYTX')) {
-        const isCoreTagCode = (code: string) => /lytx\.io\/lytx\.js|analytics\.lytx\.io/i.test(code);
-        let placements = lytxRecommendations.tagPlacements.filter(p => !isCoreTagCode(p.code));
-        const acknowledgment = {
-          location: 'head' as const,
-          reason: 'LYTX appears to be already installed on this site. Verify configuration and ensure events are firing as expected.',
-          priority: 'low' as const,
-          code: ''
-        };
-        placements = [acknowledgment, ...placements];
-        lytxRecommendations.tagPlacements = placements;
-      }
-
-      console.log(`✅ [${analysisId}] LYTX recommendations completed successfully:`, {
-        tagPlacementsCount: lytxRecommendations.tagPlacements.length,
-        trackingEventsCount: lytxRecommendations.trackingEvents.length,
-        optimizationsCount: lytxRecommendations.optimizations.length
-      });
-
-      // Step 4: Combine results
-      console.log(`📦 [${analysisId}] Step 4: Combining results...`);
       const totalTime = Date.now() - startTime;
-
-      const analysisResult: SiteAnalysisResult = {
-        pageAnalysis: {
-          ...pageAnalysis,
-          // Add metadata about potential bot protection
-          ...(pageAnalysis.title.toLowerCase().includes('attention required') && {
-            technicalStack: {
-              ...pageAnalysis.technicalStack,
-              analytics: [...pageAnalysis.technicalStack.analytics, 'Bot Protection Detected']
-            }
-          })
-        },
-        lytxRecommendations,
+      
+      // Add metadata
+      const result: SiteAnalysisResult = {
+        ...analysisResult.object,
         analysisId,
         timestamp: new Date().toISOString(),
       };
@@ -309,18 +128,16 @@ Quick recommendations only.`,
       console.log(`🏁 [${analysisId}] Site analysis completed successfully in ${totalTime}ms`, {
         url,
         totalTime: `${totalTime}ms`,
-        htmlSize: initial_html.length,
-        pageTitle: pageAnalysis.title,
-        recommendationsGenerated: lytxRecommendations.tagPlacements.length + lytxRecommendations.trackingEvents.length + lytxRecommendations.optimizations.length
+        htmlSize: html.length,
+        pageTitle: result.pageAnalysis.title,
       });
 
-      return analysisResult;
+      return result;
     } catch (error) {
       const totalTime = Date.now() - startTime;
       console.error(`💥 [${analysisId}] Site analysis failed after ${totalTime}ms:`, {
         url,
         error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack?.substring(0, 500) : undefined,
         totalTime: `${totalTime}ms`,
         timestamp: new Date().toISOString()
       });
@@ -328,16 +145,16 @@ Quick recommendations only.`,
     }
   }
 
+  // Simplified multiple page analysis
   async analyzeMultiplePages(urls: string[], options: {
     concurrency?: number;
     usePuppeteer: boolean;
   }): Promise<SiteAnalysisResult[]> {
-    const { concurrency = 3, usePuppeteer } = options; // Default to 3 concurrent requests
+    const { concurrency = 3, usePuppeteer } = options;
     const batchId = crypto.randomUUID();
 
     console.log(`🚀 [${batchId}] Starting parallel analysis of ${urls.length} URLs with concurrency=${concurrency}`);
 
-    // Use Promise.allSettled to process all URLs in parallel while handling failures gracefully
     const promises = urls.map(async (url, index) => {
       try {
         console.log(`📄 [${batchId}] Starting analysis ${index + 1}/${urls.length}: ${url}`);
@@ -350,7 +167,6 @@ Quick recommendations only.`,
       }
     });
 
-    // Process with controlled concurrency to avoid overwhelming the system
     const results: SiteAnalysisResult[] = [];
     const batches: Promise<any>[][] = [];
 
@@ -370,7 +186,6 @@ Quick recommendations only.`,
         if (promiseResult.status === 'fulfilled' && promiseResult.value.status === 'fulfilled') {
           results.push(promiseResult.value.value);
         }
-        // Errors are already logged in the individual promises above
       }
 
       console.log(`✅ [${batchId}] Batch ${batchIndex + 1}/${batches.length} completed in ${Date.now() - batchStartTime}ms`);
@@ -390,35 +205,23 @@ Quick recommendations only.`,
     return results;
   }
 
-  // Analyze provided HTML directly (no fetching/rendering)
+  // Simplified direct HTML analysis
   async analyzeProvidedHtml(url: string, html: string): Promise<SiteAnalysisResult> {
     const analysisId = crypto.randomUUID();
     const startTime = Date.now();
     console.log(`🔍 [${analysisId}] Starting direct HTML analysis for: ${url}`);
 
-    // Prepare a faux pageContent
-    const pageContent = {
-      html,
-      title: (html.match(/<title[^>]*>(.*?)<\/title>/i)?.[1] || 'No title found').trim(),
-      url,
-      metadata: {
-        viewport: { width: 1280, height: 720 },
-        loadTime: 0,
-        timestamp: new Date().toISOString(),
-      },
-    } as const;
-
     try {
-      // Reuse the same AI steps as analyzeSite
-      console.log(`🤖 [${analysisId}] Analyzing page structure with AI (provided HTML)...`);
-      const lytxDetected = hasLytxScriptTag(pageContent.html);
-      const truncatedHtml = this.truncateHtml(pageContent.html);
-      console.log(`📝 [${analysisId}] HTML truncated from ${pageContent.html.length} to ${truncatedHtml.length} chars`);
+      const truncatedHtml = this.truncateHtml(html);
+      const lytxDetected = hasLytxScriptTag(html);
+      
+      console.log(`📝 [${analysisId}] HTML truncated from ${html.length} to ${truncatedHtml.length} chars`);
+      console.log(`🔎 [${analysisId}] LYTX Detection: ${lytxDetected ? 'Found' : 'Not found'}`);
 
-      const pageAnalysisResult = await generateObject({
+      const analysisResult = await generateObject({
         model: openai(DEFAULT_MODEL),
-        schema: PageAnalysisSchema,
-        prompt: `Analyze this webpage HTML: ${pageContent.url}
+        schema: SiteAnalysisResult,
+        prompt: `Analyze this webpage HTML: ${url}
 
 HTML:
 ${truncatedHtml}
@@ -426,64 +229,16 @@ ${truncatedHtml}
 LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX" in analytics array' : 'No LYTX script detected'}`,
       });
 
-      let pageAnalysis: PageAnalysis = pageAnalysisResult.object;
-      if (lytxDetected && !pageAnalysis.technicalStack.analytics.includes('LYTX')) {
-        pageAnalysis.technicalStack.analytics = [...pageAnalysis.technicalStack.analytics, 'LYTX'];
-      }
-
-      // Recommendations
-      const recommendationsResult = await generateObject({
-        model: openai(DEFAULT_MODEL),
-        schema: LYTXRecommendationSchema,
-        prompt: `You are a LYTX analytics expert. Generate LYTX implementation recommendations based on this page analysis.
-
-IMPORTANT IMPLEMENTATION RULES:
-1) The core tag MUST use: <script defer data-domain="<domain>" src="https://lytx.io/lytx.js?account=<ACCOUNT>"></script>
-2) For custom events, ALWAYS use: window.lytxApi.event('<ACCOUNT>', 'web', '<event_name>')
-3) Do NOT use 'lytrack', 'analytics.lytx.io', or other vendors. Use only LYTX patterns above.
-4) Provide minimal, copy-pasteable code that matches these rules.
-
-Page Analysis Data:
-${JSON.stringify(pageAnalysis, null, 2)}
-
-LYTX Detection: ${pageAnalysis.technicalStack.analytics.includes('LYTX') ? 'LYTX already installed - acknowledge in tagPlacements and avoid duplicating core tag' : 'LYTX not detected - include core tag placement'}
-
-Focus on conversion impact and provide clear implementation guidance.`,
-      });
-
-      let lytxRecommendations: LYTXRecommendation = recommendationsResult.object;
-      lytxRecommendations.tagPlacements = lytxRecommendations.tagPlacements.map(p => ({
-        ...p,
-        code: p.code
-          .replace(/analytics\.lytx\.io\S*/gi, 'lytx.io/lytx.js?account=<ACCOUNT>')
-          .replace(/lytrack\s*\(/gi, "window.lytxApi.event('<ACCOUNT>', 'web', ")
-      }));
-      lytxRecommendations.trackingEvents = lytxRecommendations.trackingEvents.map(e => ({
-        ...e,
-        implementation: e.implementation
-          .replace(/lytrack\s*\(/gi, "window.lytxApi.event('<ACCOUNT>', 'web', ")
-      }));
-      if (pageAnalysis.technicalStack.analytics.includes('LYTX')) {
-        const isCoreTagCode = (code: string) => /lytx\.io\/lytx\.js|analytics\.lytx\.io/i.test(code);
-        let placements = lytxRecommendations.tagPlacements.filter(p => !isCoreTagCode(p.code));
-        placements = [{
-          location: 'head' as const,
-          reason: 'LYTX appears to be already installed on this site. Verify configuration and ensure events are firing as expected.',
-          priority: 'low' as const,
-          code: ''
-        }, ...placements];
-        lytxRecommendations.tagPlacements = placements;
-      }
-
       const totalTime = Date.now() - startTime;
-      const analysisResult: SiteAnalysisResult = {
-        pageAnalysis,
-        lytxRecommendations,
+      
+      const result: SiteAnalysisResult = {
+        ...analysisResult.object,
         analysisId,
         timestamp: new Date().toISOString(),
       };
+
       console.log(`🏁 [${analysisId}] Direct HTML analysis completed in ${totalTime}ms`);
-      return analysisResult;
+      return result;
     } catch (error) {
       console.error(`💥 [${analysisId}] Direct HTML analysis failed:`, error);
       throw error;
