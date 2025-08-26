@@ -3,7 +3,6 @@ import { route, render } from "rwsdk/router";
 import { Document } from "./Document";
 import { HomePage } from "./components/HomePage";
 import { SessionPage } from "./components/SessionPage";
-import analyzeHandler from "./api/analyze";
 import analyzeCrawlHandler from "./api/analyze-crawl";
 import crawlLinksHandler from "./api/crawl-links";
 import analyzeHtmlHandler from "./api/analyze-html";

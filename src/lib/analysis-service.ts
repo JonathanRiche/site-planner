@@ -89,7 +89,7 @@ export class SiteAnalysisService {
 
     try {
       // Step 1: Fetch HTML content
-      console.log(`🌐 [${analysisId}] Step 1: Fetching HTML content...`);
+      console.log(`🌐 [${analysisId}] Step 1: Fetching HTML content... external : ${useExternalFetcher} pupputeer : ${usePuppeteer} `,);
       let html: string;
 
       if (!usePuppeteer) {

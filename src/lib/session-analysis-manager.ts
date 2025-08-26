@@ -143,7 +143,7 @@ export class SessionAnalysisManager extends DurableObject {
             initial_html = tryStatic;
           } else {
             //TODO: Handle error on frontend ask user if they want to crawl with puppeteer
-            throw new Error('Static fetch failed');
+            throw new Error('Fetch content failed');
           }
         } else {
           const browser = new OptimizedCloudflareBrowserService();
