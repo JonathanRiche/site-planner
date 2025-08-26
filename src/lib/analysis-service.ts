@@ -132,12 +132,22 @@ export class SiteAnalysisService {
       const analysisResult = await generateObject({
         model: openai(DEFAULT_MODEL),
         schema: SiteAnalysisResult,
-        prompt: `Analyze this webpage HTML: ${url}
+        prompt: `Analyze this webpage HTML and generate LYTX analytics recommendations: ${url}
 
 HTML:
 ${truncatedHtml}
 
-LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX" in analytics array' : 'No LYTX script detected'}`,
+LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX" in analytics array' : 'No LYTX script detected'}
+
+IMPORTANT - LYTX Implementation Guidelines:
+1. Core Script Tag: <script defer src="https://lytx.io/lytx.js?account=<ACCOUNT>"></script>
+2. Event Tracking: window.lytxApi.event('<ACCOUNT>', 'web', '<EVENT_NAME>')
+3. Replace <ACCOUNT> with actual account identifier  
+4. Event names should be descriptive (e.g., 'form_submit', 'product_view', 'checkout_start')
+5. Do NOT use other vendor patterns - only use the exact LYTX API above
+6. If LYTX is already detected, acknowledge existing installation and suggest additional events only
+
+Focus on conversion-oriented events and provide clear implementation guidance.`,
       });
 
       const totalTime = Date.now() - startTime;
@@ -308,12 +318,22 @@ LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX"
       const analysisResult = await generateObject({
         model: openai(DEFAULT_MODEL),
         schema: SiteAnalysisResult,
-        prompt: `Analyze this webpage HTML: ${url}
+        prompt: `Analyze this webpage HTML and generate LYTX analytics recommendations: ${url}
 
 HTML:
 ${truncatedHtml}
 
-LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX" in analytics array' : 'No LYTX script detected'}`,
+LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX" in analytics array' : 'No LYTX script detected'}
+
+IMPORTANT - LYTX Implementation Guidelines:
+1. Core Script Tag: <script defer src="https://lytx.io/lytx.js?account=<ACCOUNT>"></script>
+2. Event Tracking: window.lytxApi.event('<ACCOUNT>', 'web', '<EVENT_NAME>')
+3. Replace <ACCOUNT> with actual account identifier  
+4. Event names should be descriptive (e.g., 'form_submit', 'product_view', 'checkout_start')
+5. Do NOT use other vendor patterns - only use the exact LYTX API above
+6. If LYTX is already detected, acknowledge existing installation and suggest additional events only
+
+Focus on conversion-oriented events and provide clear implementation guidance.`,
       });
 
       const totalTime = Date.now() - startTime;
