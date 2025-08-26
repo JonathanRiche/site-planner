@@ -44,7 +44,7 @@ export function SessionPage({ sessionId }: SessionPageProps) {
         }
         const data: SessionData = await response.json();
         setSessionData(data);
-        
+
         // Stop polling when analysis is complete or failed
         if (data.status === 'completed' || data.status === 'error') {
           setLoading(false);
@@ -63,7 +63,7 @@ export function SessionPage({ sessionId }: SessionPageProps) {
       if (sessionData?.status !== 'completed' && sessionData?.status !== 'error') {
         fetchSession();
       }
-    }, 2000);
+    }, 10000);
 
     return () => clearInterval(interval);
   }, [sessionId, sessionData?.status]);
@@ -76,8 +76,8 @@ export function SessionPage({ sessionId }: SessionPageProps) {
           <div className="bg-red-50 border border-red-200 rounded-lg p-6">
             <h2 className="text-xl font-semibold text-red-800 mb-2">Session Error</h2>
             <p className="text-red-700">{error}</p>
-            <a 
-              href="/" 
+            <a
+              href="/"
               className="inline-block mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
             >
               Start New Analysis
@@ -127,7 +127,7 @@ export function SessionPage({ sessionId }: SessionPageProps) {
               day: 'numeric',
               hour: '2-digit',
               minute: '2-digit'
-            })} {sessionData.status === 'completed' && sessionData.updatedAt !== sessionData.createdAt && 
+            })} {sessionData.status === 'completed' && sessionData.updatedAt !== sessionData.createdAt &&
               `(completed ${new Date(sessionData.updatedAt).toLocaleDateString('en-US', {
                 month: 'short',
                 day: 'numeric',
@@ -144,37 +144,35 @@ export function SessionPage({ sessionId }: SessionPageProps) {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-gray-800">Analysis Progress</h2>
-                <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                  sessionData.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                  sessionData.status === 'crawling' ? 'bg-blue-100 text-blue-800' :
-                  sessionData.status === 'analyzing' ? 'bg-purple-100 text-purple-800' :
-                  sessionData.status === 'error' ? 'bg-red-100 text-red-800' :
-                  'bg-green-100 text-green-800'
-                }`}>
+                <span className={`px-3 py-1 rounded-full text-sm font-medium ${sessionData.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                    sessionData.status === 'crawling' ? 'bg-blue-100 text-blue-800' :
+                      sessionData.status === 'analyzing' ? 'bg-purple-100 text-purple-800' :
+                        sessionData.status === 'error' ? 'bg-red-100 text-red-800' :
+                          'bg-green-100 text-green-800'
+                  }`}>
                   {sessionData.status.charAt(0).toUpperCase() + sessionData.status.slice(1)}
                 </span>
               </div>
-              
+
               {sessionData.progress.message && (
                 <p className="text-gray-600">{sessionData.progress.message}</p>
               )}
-              
+
               {/* Progress bar */}
               <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
-                  className={`h-2 rounded-full transition-all duration-300 ${
-                    sessionData.status === 'crawling' ? 'bg-blue-600' :
-                    sessionData.status === 'analyzing' ? 'bg-purple-600' :
-                    sessionData.status === 'error' ? 'bg-red-600' :
-                    'bg-green-600'
-                  }`}
+                <div
+                  className={`h-2 rounded-full transition-all duration-300 ${sessionData.status === 'crawling' ? 'bg-blue-600' :
+                      sessionData.status === 'analyzing' ? 'bg-purple-600' :
+                        sessionData.status === 'error' ? 'bg-red-600' :
+                          'bg-green-600'
+                    }`}
                   style={{
-                    width: sessionData.progress.total 
+                    width: sessionData.progress.total
                       ? `${Math.round((sessionData.progress.current || 0) / sessionData.progress.total * 100)}%`
                       : sessionData.status === 'pending' ? '10%' :
                         sessionData.status === 'crawling' ? '25%' :
-                        sessionData.status === 'analyzing' ? '50%' :
-                        '100%'
+                          sessionData.status === 'analyzing' ? '50%' :
+                            '100%'
                   }}
                 />
               </div>
@@ -190,9 +188,8 @@ export function SessionPage({ sessionId }: SessionPageProps) {
                       const selected = sessionData.progress.urls?.includes(url);
                       return (
                         <div key={index} className="flex items-center gap-2 py-0.5">
-                          <span className={`inline-block w-2 h-2 rounded-full ${
-                            selected ? 'bg-blue-600' : 'bg-gray-300'
-                          }`} />
+                          <span className={`inline-block w-2 h-2 rounded-full ${selected ? 'bg-blue-600' : 'bg-gray-300'
+                            }`} />
                           <span className={selected ? 'text-gray-800' : 'text-gray-500'}>
                             {url}
                           </span>
@@ -212,8 +209,8 @@ export function SessionPage({ sessionId }: SessionPageProps) {
           <div className="bg-red-50 border border-red-200 rounded-lg p-6 mb-8">
             <h2 className="text-lg font-semibold text-red-800 mb-2">Analysis Failed</h2>
             <p className="text-red-700">{sessionData.error || 'An unknown error occurred'}</p>
-            <a 
-              href="/" 
+            <a
+              href="/"
               className="inline-block mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
             >
               Start New Analysis
@@ -251,9 +248,8 @@ export function SessionPage({ sessionId }: SessionPageProps) {
                       key={i}
                       type="button"
                       onClick={() => setSelectedIndex(i)}
-                      className={`text-left w-full border rounded-lg p-4 transition-colors cursor-pointer ${
-                        i === selectedIndex ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-                      }`}
+                      className={`text-left w-full border rounded-lg p-4 transition-colors cursor-pointer ${i === selectedIndex ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                        }`}
                     >
                       <div className="text-xs text-gray-500 mb-1">
                         {new URL(result.pageAnalysis.url).hostname}
@@ -316,11 +312,10 @@ export function SessionPage({ sessionId }: SessionPageProps) {
                           <div key={index} className="border border-gray-200 rounded-lg p-4">
                             <div className="flex justify-between items-start mb-2">
                               <h4 className="font-medium text-gray-800">Location: {placement.location}</h4>
-                              <span className={`px-2 py-1 text-xs rounded ${
-                                placement.priority === 'high' ? 'bg-red-100 text-red-800'
+                              <span className={`px-2 py-1 text-xs rounded ${placement.priority === 'high' ? 'bg-red-100 text-red-800'
                                   : placement.priority === 'medium' ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-green-100 text-green-800'
-                              }`}>
+                                    : 'bg-green-100 text-green-800'
+                                }`}>
                                 {placement.priority} priority
                               </span>
                             </div>
@@ -350,11 +345,10 @@ export function SessionPage({ sessionId }: SessionPageProps) {
                                 <p className="text-sm text-gray-600 mb-2">Trigger: {event.trigger}</p>
                                 {event.conversionImpact && (
                                   <div className="text-xs inline-flex items-center gap-2 mb-2">
-                                    <span className={`px-2 py-1 rounded ${
-                                      event.conversionImpact === 'high' ? 'bg-red-100 text-red-800' :
-                                      event.conversionImpact === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                                      'bg-green-100 text-green-800'
-                                    }`}>
+                                    <span className={`px-2 py-1 rounded ${event.conversionImpact === 'high' ? 'bg-red-100 text-red-800' :
+                                        event.conversionImpact === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                                          'bg-green-100 text-green-800'
+                                      }`}>
                                       {event.conversionImpact} conversion impact
                                     </span>
                                     {event.conversionReason && (
@@ -385,11 +379,10 @@ export function SessionPage({ sessionId }: SessionPageProps) {
                           <div key={index} className="border border-gray-200 rounded-lg p-4">
                             <div className="flex justify-between items-start mb-2">
                               <h4 className="font-medium text-gray-800 capitalize">{optimization.category}</h4>
-                              <span className={`px-2 py-1 text-xs rounded ${
-                                optimization.impact === 'high' ? 'bg-red-100 text-red-800'
+                              <span className={`px-2 py-1 text-xs rounded ${optimization.impact === 'high' ? 'bg-red-100 text-red-800'
                                   : optimization.impact === 'medium' ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-green-100 text-green-800'
-                              }`}>
+                                    : 'bg-green-100 text-green-800'
+                                }`}>
                                 {optimization.impact} impact
                               </span>
                             </div>
