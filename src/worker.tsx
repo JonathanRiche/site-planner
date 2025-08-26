@@ -18,7 +18,8 @@ export default defineApp([
 	render(Document, [
 		route("/", () => <HomePage />),
 		route("/session/:sessionId", ({ params }) => <SessionPage sessionId={params.sessionId} />),
-		route("/api/analyze", analyzeHandler),
+		//NOTE: This endpoint might be uselss
+		// route("/api/analyze", analyzeHandler),
 		route("/api/analyze-crawl", analyzeCrawlHandler),
 		route("/api/crawl-links", crawlLinksHandler),
 		route("/api/analyze-html", analyzeHtmlHandler),

@@ -8,6 +8,7 @@ export interface SessionData {
   crawl: boolean;
   maxPages: number;
   usePuppeteer: boolean;
+  useExternalFetcher: boolean;
   status: 'pending' | 'crawling' | 'analyzing' | 'completed' | 'error';
   progress: {
     stage: 'idle' | 'crawling' | 'analyzing' | 'completed' | 'error';
@@ -58,7 +59,7 @@ export default async function sessionHandler({ request }: RequestInfo<any, AppCo
 async function createSession(request: Request): Promise<Response> {
   try {
     const body: any = await request.json();
-    const { url: siteUrl, crawl = true, maxPages = 5, usePuppeteer = false } = body;
+    const { url: siteUrl, crawl = true, maxPages = 5, usePuppeteer = false, useExternalFetcher = false } = body;
 
     if (!siteUrl) {
       return new Response(JSON.stringify({ error: 'URL is required' }), {
@@ -75,6 +76,7 @@ async function createSession(request: Request): Promise<Response> {
       id: sessionId,
       url: siteUrl,
       usePuppeteer,
+      useExternalFetcher,
       crawl,
       maxPages: Math.min(Math.max(maxPages, 1), 20),
       status: 'pending',

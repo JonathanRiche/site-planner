@@ -52,6 +52,7 @@ export function HomePage() {
   const [lytxKey, setLytxKey] = useState('');
   const [crawl, setCrawl] = useState<boolean>(true);
   const [usePuppeteer, setUsePuppeteer] = useState<boolean>(false);
+  const [useExternalFetcher, setUseExternalFetcher] = useState<boolean>(false);
   const [maxPages, setMaxPages] = useState<number>(5);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<AnalysisResult[] | null>(null);
@@ -82,6 +83,7 @@ export function HomePage() {
           crawl,
           maxPages,
           usePuppeteer,
+          useExternalFetcher,
           concurrency: 3 // Use configurable concurrency
         }),
       });
@@ -161,6 +163,17 @@ export function HomePage() {
                 />
                 Use Puppeteer
               </label>
+              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={useExternalFetcher}
+                  onChange={(e) => setUseExternalFetcher(e.target.checked)}
+                  disabled={loading}
+                />
+                Use External Fetcher
+              </label>
+
 
               <div className="flex items-center gap-2">
                 <label htmlFor="maxPages" className="text-sm text-gray-700">Max pages</label>

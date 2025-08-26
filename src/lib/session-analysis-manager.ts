@@ -4,33 +4,28 @@ import { env } from 'cloudflare:workers';
 import { SiteAnalysisService } from './analysis-service';
 
 import { OptimizedCloudflareBrowserService } from './optimized-browser-service';
-export interface SessionData {
-  id: string;
-  url: string;
-  crawl: boolean;
-  maxPages: number;
-  usePuppeteer: boolean;
-  status: 'pending' | 'crawling' | 'analyzing' | 'completed' | 'error';
-  progress: {
-    stage: 'idle' | 'crawling' | 'analyzing' | 'completed' | 'error';
-    current?: number;
-    total?: number;
-    message?: string;
-    urls?: string[];
-    allUrls?: string[];
-  };
-  results?: any[];
-  error?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+import { SessionData } from "@/api/session";
 
 export class SessionAnalysisManager extends DurableObject {
   constructor(state: DurableObjectState, env: Env) {
     super(state, env);
   }
 
+  private async externalServiceFetch(url: string) {
+    console.log(`External 📡 Fetching ${url}...`);
+    const request = await fetch(`${env.EXTERNAL_FETCHER}/fetch-site?site=${url}`, {
+      method: 'GET',
 
+    });
+    if (request.ok) {
+      const html = await request.text();
+      console.log("Content ok", request.status, html.length);
+      return html;
+    } else {
+      console.log('Error fetching static content');
+      return null;
+    }
+  }
   private async staticFetch(url: string) {
     console.log(`Static 📡 Fetching ${url}...`);
     const request = await fetch(url, {
@@ -138,8 +133,12 @@ export class SessionAnalysisManager extends DurableObject {
         let initial_html: string;
 
         if (!sessionData.usePuppeteer) {
-
-          const tryStatic = await this.staticFetch(sessionData.url);
+          let tryStatic: string | null = null;
+          if (sessionData.useExternalFetcher) {
+            tryStatic = await this.externalServiceFetch(sessionData.url);
+          } else {
+            tryStatic = await this.staticFetch(sessionData.url);
+          }
           if (tryStatic) {
             initial_html = tryStatic;
           } else {
@@ -251,7 +250,7 @@ export class SessionAnalysisManager extends DurableObject {
           });
 
           const result = await Promise.race([
-            analysisService.analyzeSite(sessionData.url, sessionData.usePuppeteer),
+            analysisService.analyzeSite(sessionData.url, sessionData.usePuppeteer, sessionData.useExternalFetcher),
             timeoutPromise
           ]) as any;
 
