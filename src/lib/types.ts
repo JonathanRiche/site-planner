@@ -49,6 +49,7 @@ export const SiteAnalysisResult = z.object({
   lytxRecommendations: LYTXRecommendationSchema,
   analysisId: z.string(),
   timestamp: z.string(),
+  detectedLytxAccount: z.string().nullable().optional(),
 });
 
 export type PageAnalysis = z.infer<typeof PageAnalysisSchema>;

@@ -8,11 +8,33 @@ const openai = createOpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Detect presence of LYTX script in raw HTML
+// Detect presence of LYTX script in raw HTML and extract account ID
+function detectLytxInfo(html: string): { detected: boolean; accountId: string | null } {
+  if (!html) return { detected: false, accountId: null };
+
+  // Check for LYTX script tag with account parameter
+  const scriptMatch = html.match(/<script[^>]+src=["']([^"']*(?:lytx\.io\/lytx\.js|analytics\.lytx\.io)[^"']*)["'][^>]*>/i);
+  if (scriptMatch) {
+    const scriptSrc = scriptMatch[1];
+    // Extract account ID from URL parameters
+    const accountMatch = scriptSrc.match(/[?&]account=([^&"']+)/i);
+    return {
+      detected: true,
+      accountId: accountMatch ? accountMatch[1] : null
+    };
+  }
+
+  // Check for window.lytxApi usage (fallback detection)
+  if (/window\.(?:lytx|lytxApi)\b/i.test(html)) {
+    return { detected: true, accountId: null };
+  }
+
+  return { detected: false, accountId: null };
+}
+
+// Backward compatibility function
 function hasLytxScriptTag(html: string): boolean {
-  if (!html) return false;
-  return /<script[^>]+src=["'][^"']*(?:lytx\.io\/lytx\.js|analytics\.lytx\.io)[^"']*["'][^>]*>/i.test(html)
-    || /window\.(?:lytx|lytxApi)\b/i.test(html);
+  return detectLytxInfo(html).detected;
 }
 
 export class SiteAnalysisService {
@@ -124,10 +146,10 @@ export class SiteAnalysisService {
       console.log(`🤖 [${analysisId}] Step 2: Running single AI analysis...`);
       
       const truncatedHtml = this.truncateHtml(html);
-      const lytxDetected = hasLytxScriptTag(html);
+      const lytxInfo = detectLytxInfo(html);
       
       console.log(`📝 [${analysisId}] HTML truncated from ${html.length} to ${truncatedHtml.length} chars`);
-      console.log(`🔎 [${analysisId}] LYTX Detection: ${lytxDetected ? 'Found' : 'Not found'}`);
+      console.log(`🔎 [${analysisId}] LYTX Detection: ${lytxInfo.detected ? 'Found' : 'Not found'}${lytxInfo.accountId ? ` (Account: ${lytxInfo.accountId})` : ''}`);
 
       const analysisResult = await generateObject({
         model: openai(DEFAULT_MODEL),
@@ -137,7 +159,7 @@ export class SiteAnalysisService {
 HTML:
 ${truncatedHtml}
 
-LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX" in analytics array' : 'No LYTX script detected'}
+LYTX Detection: ${lytxInfo.detected ? `Existing LYTX script detected - include "LYTX" in analytics array${lytxInfo.accountId ? ` (Account ID: ${lytxInfo.accountId})` : ''}` : 'No LYTX script detected'}
 
 IMPORTANT - LYTX Implementation Guidelines:
 1. Core Script Tag: <script defer src="https://lytx.io/lytx.js?account=<ACCOUNT>"></script>
@@ -157,6 +179,7 @@ Focus on conversion-oriented events and provide clear implementation guidance.`,
         ...analysisResult.object,
         analysisId,
         timestamp: new Date().toISOString(),
+        detectedLytxAccount: lytxInfo.accountId,
       };
 
       console.log(`🏁 [${analysisId}] Site analysis completed successfully in ${totalTime}ms`, {
@@ -310,10 +333,10 @@ Focus on conversion-oriented events and provide clear implementation guidance.`,
 
     try {
       const truncatedHtml = this.truncateHtml(html);
-      const lytxDetected = hasLytxScriptTag(html);
+      const lytxInfo = detectLytxInfo(html);
       
       console.log(`📝 [${analysisId}] HTML truncated from ${html.length} to ${truncatedHtml.length} chars`);
-      console.log(`🔎 [${analysisId}] LYTX Detection: ${lytxDetected ? 'Found' : 'Not found'}`);
+      console.log(`🔎 [${analysisId}] LYTX Detection: ${lytxInfo.detected ? 'Found' : 'Not found'}${lytxInfo.accountId ? ` (Account: ${lytxInfo.accountId})` : ''}`);
 
       const analysisResult = await generateObject({
         model: openai(DEFAULT_MODEL),
@@ -323,7 +346,7 @@ Focus on conversion-oriented events and provide clear implementation guidance.`,
 HTML:
 ${truncatedHtml}
 
-LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX" in analytics array' : 'No LYTX script detected'}
+LYTX Detection: ${lytxInfo.detected ? `Existing LYTX script detected - include "LYTX" in analytics array${lytxInfo.accountId ? ` (Account ID: ${lytxInfo.accountId})` : ''}` : 'No LYTX script detected'}
 
 IMPORTANT - LYTX Implementation Guidelines:
 1. Core Script Tag: <script defer src="https://lytx.io/lytx.js?account=<ACCOUNT>"></script>
@@ -342,6 +365,7 @@ Focus on conversion-oriented events and provide clear implementation guidance.`,
         ...analysisResult.object,
         analysisId,
         timestamp: new Date().toISOString(),
+        detectedLytxAccount: lytxInfo.accountId,
       };
 
       console.log(`🏁 [${analysisId}] Direct HTML analysis completed in ${totalTime}ms`);
