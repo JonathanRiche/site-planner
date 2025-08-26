@@ -189,6 +189,8 @@ export class SessionAnalysisManager extends DurableObject {
           const results = await Promise.race([
             analysisService.analyzeMultiplePages(urlsToAnalyze, {
               usePuppeteer: sessionData.usePuppeteer,
+              useExternalFetcher: sessionData.useExternalFetcher,
+              externalFetcherUrl: env.EXTERNAL_FETCHER,
               concurrency: Math.min(urlsToAnalyze.length, 3)
             }),
             timeoutPromise
@@ -250,7 +252,7 @@ export class SessionAnalysisManager extends DurableObject {
           });
 
           const result = await Promise.race([
-            analysisService.analyzeSite(sessionData.url, sessionData.usePuppeteer, sessionData.useExternalFetcher),
+            analysisService.analyzeSite(sessionData.url, sessionData.usePuppeteer, sessionData.useExternalFetcher, env.EXTERNAL_FETCHER),
             timeoutPromise
           ]) as any;
 

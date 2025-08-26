@@ -3,7 +3,6 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { SimpleCloudflareBrowserService } from './simple-browser-service';
 import { SiteAnalysisResult } from './types';
 import { DEFAULT_MODEL } from './defaults';
-import { env } from "cloudflare:workers";
 
 const openai = createOpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -41,11 +40,14 @@ export class SiteAnalysisService {
     return truncated + '\n... (truncated due to size)';
   }
 
-  private async externalServiceFetch(url: string) {
+  // External service fetch - will be called from Durable Object context where env is available
+  private async externalServiceFetch(url: string, externalFetcherUrl?: string) {
     console.log(`External 📡 Fetching ${url}...`);
-    const request = await fetch(`${env.EXTERNAL_FETCHER}/fetch-site?site=${url}`, {
+    if (!externalFetcherUrl) {
+      throw new Error('External fetcher URL not provided');
+    }
+    const request = await fetch(`${externalFetcherUrl}/fetch-site?site=${url}`, {
       method: 'GET',
-
     });
     if (request.ok) {
       const html = await request.text();
@@ -78,7 +80,7 @@ export class SiteAnalysisService {
   }
 
   // Simplified single AI call analysis like your script
-  async analyzeSite(url: string, usePuppeteer: boolean, useExternalFetcher: boolean): Promise<SiteAnalysisResult> {
+  async analyzeSite(url: string, usePuppeteer: boolean, useExternalFetcher?: boolean, externalFetcherUrl?: string): Promise<SiteAnalysisResult> {
     const analysisId = crypto.randomUUID();
     const startTime = Date.now();
 
@@ -89,13 +91,13 @@ export class SiteAnalysisService {
 
     try {
       // Step 1: Fetch HTML content
-      console.log(`🌐 [${analysisId}] Step 1: Fetching HTML content... external : ${useExternalFetcher} pupputeer : ${usePuppeteer} `,);
+      console.log(`🌐 [${analysisId}] Step 1: Fetching HTML content... external : ${useExternalFetcher} pupputeer : ${usePuppeteer} `);
       let html: string;
-
+      
       if (!usePuppeteer) {
         let tryStatic: string | null = null;
-        if (useExternalFetcher) {
-          tryStatic = await this.externalServiceFetch(url);
+        if (useExternalFetcher && externalFetcherUrl) {
+          tryStatic = await this.externalServiceFetch(url, externalFetcherUrl);
         } else {
           tryStatic = await this.staticFetch(url);
         }
@@ -120,10 +122,10 @@ export class SiteAnalysisService {
 
       // Step 2: Single AI call for complete analysis (like your script)
       console.log(`🤖 [${analysisId}] Step 2: Running single AI analysis...`);
-
+      
       const truncatedHtml = this.truncateHtml(html);
       const lytxDetected = hasLytxScriptTag(html);
-
+      
       console.log(`📝 [${analysisId}] HTML truncated from ${html.length} to ${truncatedHtml.length} chars`);
       console.log(`🔎 [${analysisId}] LYTX Detection: ${lytxDetected ? 'Found' : 'Not found'}`);
 
@@ -139,7 +141,7 @@ LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX"
       });
 
       const totalTime = Date.now() - startTime;
-
+      
       // Add metadata
       const result: SiteAnalysisResult = {
         ...analysisResult.object,
@@ -171,9 +173,10 @@ LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX"
   async analyzeMultiplePages(urls: string[], options: {
     concurrency?: number;
     usePuppeteer: boolean;
-    useExternalFetcher: boolean;
+    useExternalFetcher?: boolean;
+    externalFetcherUrl?: string;
   }): Promise<SiteAnalysisResult[]> {
-    const { concurrency = 3, usePuppeteer, useExternalFetcher } = options;
+    const { concurrency = 3, usePuppeteer, useExternalFetcher, externalFetcherUrl } = options;
     const batchId = crypto.randomUUID();
 
     console.log(`🚀 [${batchId}] Starting parallel analysis of ${urls.length} URLs with concurrency=${concurrency}`);
@@ -181,7 +184,7 @@ LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX"
     const promises = urls.map(async (url, index) => {
       try {
         console.log(`📄 [${batchId}] Starting analysis ${index + 1}/${urls.length}: ${url}`);
-        const result = await this.analyzeSite(url, usePuppeteer, useExternalFetcher);
+        const result = await this.analyzeSite(url, usePuppeteer, useExternalFetcher, externalFetcherUrl);
         console.log(`✅ [${batchId}] Completed analysis ${index + 1}/${urls.length}: ${url}`);
         return { status: 'fulfilled' as const, value: result, url };
       } catch (error) {
@@ -237,7 +240,7 @@ LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX"
     try {
       const truncatedHtml = this.truncateHtml(html);
       const lytxDetected = hasLytxScriptTag(html);
-
+      
       console.log(`📝 [${analysisId}] HTML truncated from ${html.length} to ${truncatedHtml.length} chars`);
       console.log(`🔎 [${analysisId}] LYTX Detection: ${lytxDetected ? 'Found' : 'Not found'}`);
 
@@ -253,7 +256,7 @@ LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX"
       });
 
       const totalTime = Date.now() - startTime;
-
+      
       const result: SiteAnalysisResult = {
         ...analysisResult.object,
         analysisId,

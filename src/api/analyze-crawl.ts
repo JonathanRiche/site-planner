@@ -93,6 +93,7 @@ export default async function analyzeCrawlHandler({ request }: RequestInfo<any, 
     //TODO: Pass as props
     const results = await analysisService.analyzeMultiplePages(urlsToAnalyze, {
       usePuppeteer: false,
+      useExternalFetcher: false,
       concurrency: Math.min(urlsToAnalyze.length, concurrency) // Use configured concurrency, or fewer if less URLs
     });
 
