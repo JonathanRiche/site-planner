@@ -236,23 +236,40 @@ export function SessionPage({ sessionId }: SessionPageProps) {
               />
             </div>
 
-            {/* Page Selection */}
-            {sessionData.results.length > 1 && (
+            {/* Page Selection with Loading States */}
+            {(sessionData.results.length > 0 || (sessionData.progress?.urls && sessionData.status === 'analyzing')) && (
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h2 className="text-lg font-semibold text-gray-800 mb-4">
-                  Analyzed Pages ({sessionData.results.length} total)
+                  {sessionData.status === 'analyzing' ? (
+                    <>
+                      Analysis Progress ({sessionData.results.length} of {sessionData.progress?.total || 'unknown'} completed)
+                      <div className="text-sm text-gray-600 mt-1">
+                        {sessionData.progress?.message}
+                      </div>
+                    </>
+                  ) : (
+                    `Analyzed Pages (${sessionData.results.length} total)`
+                  )}
                 </h2>
                 <div className="grid md:grid-cols-2 gap-4">
+                  {/* Completed Results */}
                   {sessionData.results.map((result, i) => (
                     <button
-                      key={i}
+                      key={`result-${i}`}
                       type="button"
                       onClick={() => setSelectedIndex(i)}
                       className={`text-left w-full border rounded-lg p-4 transition-colors cursor-pointer ${i === selectedIndex ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
                         }`}
                     >
-                      <div className="text-xs text-gray-500 mb-1">
-                        {new URL(result.pageAnalysis.url).hostname}
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-xs text-gray-500">
+                          {new URL(result.pageAnalysis.url).hostname}
+                        </div>
+                        <div className="flex items-center text-green-600">
+                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        </div>
                       </div>
                       <div className="font-medium text-gray-900 truncate">
                         {result.pageAnalysis.title || result.pageAnalysis.url}
@@ -262,6 +279,36 @@ export function SessionPage({ sessionId }: SessionPageProps) {
                       </div>
                     </button>
                   ))}
+                  
+                  {/* Loading States for Remaining URLs */}
+                  {sessionData.status === 'analyzing' && sessionData.progress?.urls && (
+                    <>
+                      {sessionData.progress.urls.slice(sessionData.results.length).map((url, i) => (
+                        <div
+                          key={`loading-${i}`}
+                          className="text-left w-full border border-gray-200 rounded-lg p-4 bg-gray-50"
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="text-xs text-gray-500">
+                              {new URL(url).hostname}
+                            </div>
+                            <div className="flex items-center text-blue-500">
+                              <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                            </div>
+                          </div>
+                          <div className="font-medium text-gray-500 truncate">
+                            Analyzing...
+                          </div>
+                          <div className="text-xs text-gray-400 truncate">
+                            {url}
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
                 </div>
               </div>
             )}

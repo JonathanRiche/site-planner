@@ -186,30 +186,69 @@ export class SessionAnalysisManager extends DurableObject {
             setTimeout(() => reject(new Error('Analysis timeout after 5 minutes')), 5 * 60 * 1000);
           });
 
-          const results = await Promise.race([
-            analysisService.analyzeMultiplePages(urlsToAnalyze, {
+          // Use streaming analysis to update results progressively
+          const allResults: any[] = [];
+          
+          await Promise.race([
+            analysisService.analyzeMultiplePagesStreaming(urlsToAnalyze, {
               usePuppeteer: sessionData.usePuppeteer,
               useExternalFetcher: sessionData.useExternalFetcher,
               externalFetcherUrl: env.EXTERNAL_FETCHER,
-              concurrency: Math.min(urlsToAnalyze.length, 3)
+              concurrency: Math.min(urlsToAnalyze.length, 3),
+              onResult: async (result, completedCount, totalCount) => {
+                // Add result to our tracking array
+                allResults.push(result);
+                
+                // Update session with partial results
+                await updateSession({
+                  status: 'analyzing',
+                  progress: {
+                    stage: 'analyzing',
+                    current: completedCount,
+                    total: totalCount,
+                    message: `Analysis in progress: ${completedCount}/${totalCount} pages completed`,
+                    urls: urlsToAnalyze
+                  },
+                  results: [...allResults], // Include all results so far
+                  updatedAt: new Date().toISOString(),
+                });
+                
+                console.log(`📊 DO: Updated session ${sessionId} with result ${completedCount}/${totalCount}`);
+              },
+              onError: async (error, url, completedCount, totalCount) => {
+                console.warn(`⚠️ DO: Failed to analyze ${url} for session ${sessionId}:`, error);
+                
+                // Update progress even for errors
+                await updateSession({
+                  status: 'analyzing',
+                  progress: {
+                    stage: 'analyzing',
+                    current: completedCount,
+                    total: totalCount,
+                    message: `Analysis in progress: ${completedCount}/${totalCount} pages processed (some failures)`,
+                    urls: urlsToAnalyze
+                  },
+                  results: [...allResults], // Include successful results
+                  updatedAt: new Date().toISOString(),
+                });
+              }
             }),
             timeoutPromise
           ]) as any[];
 
-          console.log(`✅ DO: Parallel analysis completed for session ${sessionId} with ${results.length} results`);
+          console.log(`✅ DO: Streaming analysis completed for session ${sessionId} with ${allResults.length} results`);
 
-          // Complete session with successful results (even if some failed)
+          // Complete session with final results
           await updateSession({
             status: 'completed',
             progress: {
               stage: 'completed',
-              current: results.length,
+              current: allResults.length,
               total: urlsToAnalyze.length,
-              message: results.length > 0
-                ? `Analysis completed. Successfully analyzed ${results.length} out of ${urlsToAnalyze.length} pages.`
-                : `Analysis completed but no pages could be processed successfully.`
+              message: `Analysis completed: ${allResults.length}/${urlsToAnalyze.length} pages analyzed`
             },
-            results
+            results: allResults,
+            updatedAt: new Date().toISOString(),
           });
 
         } catch (error) {

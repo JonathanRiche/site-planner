@@ -169,6 +169,67 @@ LYTX Detection: ${lytxDetected ? 'Existing LYTX script detected - include "LYTX"
     }
   }
 
+  // Streaming multiple page analysis with callback for each completed result
+  async analyzeMultiplePagesStreaming(urls: string[], options: {
+    concurrency?: number;
+    usePuppeteer: boolean;
+    useExternalFetcher?: boolean;
+    externalFetcherUrl?: string;
+    onResult?: (result: SiteAnalysisResult, completedCount: number, totalCount: number) => Promise<void>;
+    onError?: (error: any, url: string, completedCount: number, totalCount: number) => Promise<void>;
+  }): Promise<SiteAnalysisResult[]> {
+    const { concurrency = 3, usePuppeteer, useExternalFetcher, externalFetcherUrl, onResult, onError } = options;
+    const batchId = crypto.randomUUID();
+    const totalCount = urls.length;
+    let completedCount = 0;
+
+    console.log(`🚀 [${batchId}] Starting streaming analysis of ${urls.length} URLs with concurrency=${concurrency}`);
+
+    const results: SiteAnalysisResult[] = [];
+    const semaphore = new Array(concurrency).fill(null);
+    let urlIndex = 0;
+
+    // Process URLs with controlled concurrency
+    const processUrl = async (url: string, index: number): Promise<void> => {
+      try {
+        console.log(`📄 [${batchId}] Starting analysis ${index + 1}/${totalCount}: ${url}`);
+        const result = await this.analyzeSite(url, usePuppeteer, useExternalFetcher, externalFetcherUrl);
+        
+        completedCount++;
+        results.push(result);
+        console.log(`✅ [${batchId}] Completed analysis ${completedCount}/${totalCount}: ${url}`);
+        
+        // Notify callback with result
+        if (onResult) {
+          await onResult(result, completedCount, totalCount);
+        }
+      } catch (error) {
+        completedCount++;
+        console.error(`❌ [${batchId}] Failed analysis ${completedCount}/${totalCount}: ${url}:`, error);
+        
+        // Notify callback with error
+        if (onError) {
+          await onError(error, url, completedCount, totalCount);
+        }
+      }
+    };
+
+    // Start processing with controlled concurrency
+    const workers = semaphore.map(async () => {
+      while (urlIndex < urls.length) {
+        const currentIndex = urlIndex++;
+        const url = urls[currentIndex];
+        await processUrl(url, currentIndex);
+      }
+    });
+
+    // Wait for all workers to complete
+    await Promise.all(workers);
+
+    console.log(`🏁 [${batchId}] Streaming analysis completed: ${results.length}/${totalCount} successful`);
+    return results;
+  }
+
   // Simplified multiple page analysis
   async analyzeMultiplePages(urls: string[], options: {
     concurrency?: number;
