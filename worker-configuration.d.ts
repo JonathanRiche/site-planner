@@ -10,6 +10,7 @@ declare namespace Cloudflare {
 		EXTERNAL_FETCHER_API_KEY: string;
 		BROWSER_SESSION_MANAGER: DurableObjectNamespace<import("./src/worker").BrowserSessionManager>;
 		SESSION_ANALYSIS_MANAGER: DurableObjectNamespace<import("./src/worker").SessionAnalysisManager>;
+		SITE_ANALYSIS_DO: DurableObjectNamespace<import("./src/lib/site-analysis-do").SiteAnalysisDO>;
 		SITE_PLANNER_DB: D1Database;
 		MYBROWSER: Fetcher;
 		ASSETS: Fetcher;

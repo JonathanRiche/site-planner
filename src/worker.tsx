@@ -10,6 +10,7 @@ import browserSessionsHandler from "./api/browser-sessions";
 import sessionHandler from "./api/session";
 import { SimpleBrowserSessionManager } from "./lib/simple-session-manager";
 import { SessionAnalysisManager } from "./lib/session-analysis-manager";
+import { SiteAnalysisDO } from "./lib/site-analysis-do";
 export type AppContext = {
 	env: Env;
 };
@@ -32,3 +33,4 @@ export default defineApp([
 // Export Durable Objects
 export { SimpleBrowserSessionManager as BrowserSessionManager };
 export { SessionAnalysisManager };
+export { SiteAnalysisDO };

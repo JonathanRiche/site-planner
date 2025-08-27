@@ -5,6 +5,7 @@ import { env } from 'cloudflare:workers';
 export interface SessionData {
   id: string;
   url: string;
+  urls?: string[];
   crawl: boolean;
   maxPages: number;
   usePuppeteer: boolean;
