@@ -227,39 +227,58 @@ Focus on conversion-oriented events and provide clear implementation guidance.`,
 
     // Process URLs with controlled concurrency
     const processUrl = async (url: string, index: number): Promise<void> => {
+      const startTime = Date.now();
       try {
         console.log(`📄 [${batchId}] Starting analysis ${index + 1}/${totalCount}: ${url}`);
-        const result = await this.analyzeSite(url, usePuppeteer, useExternalFetcher, externalFetcherUrl);
+
+        // Add timeout to individual analysis (2 minutes max per page)
+        const analysisPromise = this.analyzeSite(url, usePuppeteer, useExternalFetcher, externalFetcherUrl);
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error(`Analysis timeout after 2 minutes for ${url}`)), 2 * 60 * 1000);
+        });
+
+        const result = await Promise.race([analysisPromise, timeoutPromise]);
 
         completedCount++;
         results.push(result);
-        console.log(`✅ [${batchId}] Completed analysis ${completedCount}/${totalCount}: ${url}`);
+        const duration = Date.now() - startTime;
+        console.log(`✅ [${batchId}] Completed analysis ${completedCount}/${totalCount}: ${url} (${duration}ms)`);
 
         // Notify callback with result
         if (onResult) {
+          console.log(`📤 [${batchId}] Calling onResult callback for ${url}`);
           await onResult(result, completedCount, totalCount);
+          console.log(`📥 [${batchId}] onResult callback completed for ${url}`);
         }
       } catch (error) {
         completedCount++;
-        console.error(`❌ [${batchId}] Failed analysis ${completedCount}/${totalCount}: ${url}:`, error);
+        const duration = Date.now() - startTime;
+        console.error(`❌ [${batchId}] Failed analysis ${completedCount}/${totalCount}: ${url} (${duration}ms):`, error);
 
         // Notify callback with error
         if (onError) {
+          console.log(`📤 [${batchId}] Calling onError callback for ${url}`);
           await onError(error, url, completedCount, totalCount);
+          console.log(`📥 [${batchId}] onError callback completed for ${url}`);
         }
       }
     };
 
     // Start processing with controlled concurrency
-    const workers = semaphore.map(async () => {
+    console.log(`🔄 [${batchId}] Starting ${concurrency} worker threads`);
+    const workers = semaphore.map(async (worker, workerIndex) => {
+      console.log(`👷 [${batchId}] Worker ${workerIndex + 1} started`);
       while (urlIndex < urls.length) {
         const currentIndex = urlIndex++;
         const url = urls[currentIndex];
+        console.log(`🎯 [${batchId}] Worker ${workerIndex + 1} assigned URL ${currentIndex + 1}/${totalCount}: ${url}`);
         await processUrl(url, currentIndex);
       }
+      console.log(`🏁 [${batchId}] Worker ${workerIndex + 1} finished`);
     });
 
     // Wait for all workers to complete
+    console.log(`⏳ [${batchId}] Waiting for all workers to complete...`);
     await Promise.all(workers);
 
     console.log(`🏁 [${batchId}] Streaming analysis completed: ${results.length}/${totalCount} successful`);

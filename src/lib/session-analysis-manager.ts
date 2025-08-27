@@ -199,10 +199,14 @@ export class SessionAnalysisManager extends DurableObject {
               externalFetcherUrl: env.EXTERNAL_FETCHER,
               concurrency: Math.min(urlsToAnalyze.length, 3),
               onResult: async (result, completedCount, totalCount) => {
+                console.log(`📊 DO: onResult callback called for session ${sessionId} - ${completedCount}/${totalCount}`);
+
                 // Add result to our tracking array
                 allResults.push(result);
+                console.log(`📊 DO: Added result to allResults array, now has ${allResults.length} results`);
 
                 // Update session with partial results
+                console.log(`📊 DO: Updating session ${sessionId} with ${allResults.length} results`);
                 await updateSession({
                   status: 'analyzing',
                   progress: {
@@ -216,12 +220,14 @@ export class SessionAnalysisManager extends DurableObject {
                   updatedAt: new Date().toISOString(),
                 });
 
-                console.log(`📊 DO: Updated session ${sessionId} with result ${completedCount}/${totalCount}`);
+                console.log(`📊 DO: Successfully updated session ${sessionId} with result ${completedCount}/${totalCount}`);
               },
               onError: async (error, url, completedCount, totalCount) => {
+                console.warn(`⚠️ DO: onError callback called for session ${sessionId} - ${completedCount}/${totalCount}`);
                 console.warn(`⚠️ DO: Failed to analyze ${url} for session ${sessionId}:`, error);
 
                 // Update progress even for errors
+                console.log(`📊 DO: Updating session ${sessionId} after error with ${allResults.length} results`);
                 await updateSession({
                   status: 'analyzing',
                   progress: {
@@ -234,6 +240,7 @@ export class SessionAnalysisManager extends DurableObject {
                   results: [...allResults], // Include successful results
                   updatedAt: new Date().toISOString(),
                 });
+                console.log(`📊 DO: Successfully updated session ${sessionId} after error`);
               }
             }),
             timeoutPromise
