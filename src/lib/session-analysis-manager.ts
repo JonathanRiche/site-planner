@@ -7,8 +7,32 @@ import { OptimizedCloudflareBrowserService } from './optimized-browser-service';
 import { SessionData } from "@/api/session";
 
 export class SessionAnalysisManager extends DurableObject {
+  protected state: DurableObjectState;
+  protected env: Env;
+  private startTime: number = 0;
+
   constructor(state: DurableObjectState, env: Env) {
     super(state, env);
+    this.state = state;
+    this.env = env;
+    this.startTime = Date.now();
+  }
+
+  private logExecutionStats(message: string) {
+    const now = Date.now();
+    const executionTime = now - this.startTime;
+    const executionMinutes = Math.floor(executionTime / 60000);
+    const executionSeconds = Math.floor((executionTime % 60000) / 1000);
+
+    console.log(`⏱️  DO EXECUTION [${executionMinutes}:${executionSeconds.toString().padStart(2, '0')}] ${message}`);
+
+    // Warn if approaching limits
+    if (executionTime > 4 * 60 * 1000) { // 4 minutes
+      console.warn(`⚠️  DO EXECUTION WARNING: Approaching 5-minute limit (${executionMinutes}:${executionSeconds.toString().padStart(2, '0')} elapsed)`);
+    }
+    if (executionTime > 4.5 * 60 * 1000) { // 4.5 minutes
+      console.error(`🚨 DO EXECUTION CRITICAL: Very close to 5-minute limit (${executionMinutes}:${executionSeconds.toString().padStart(2, '0')} elapsed)`);
+    }
   }
 
   private async externalServiceFetch(url: string) {
@@ -108,18 +132,22 @@ export class SessionAnalysisManager extends DurableObject {
     };
 
     try {
+      this.logExecutionStats(`Starting performAnalysis for session ${sessionId}`);
+
       // Check for required environment variables first
       console.log(`🔍 DO: Checking environment for session ${sessionId}...`);
       if (!process.env.OPENAI_API_KEY) {
         throw new Error('OPENAI_API_KEY not configured. Cannot proceed with analysis.');
       }
       console.log(`✅ DO: OPENAI_API_KEY is configured for session ${sessionId}`);
+      this.logExecutionStats(`Environment check completed`);
 
       // Import the analysis service dynamically
       console.log(`📦 DO: Importing analysis services for session ${sessionId}...`);
       // const { SiteAnalysisService } = await import('./analysis-service');
       // const  OptimizedCloudflareBrowserService } = await import('./optimized-browser-service');
       console.log(`✅ DO: Services imported successfully for session ${sessionId}`);
+      this.logExecutionStats(`Services imported`);
 
       if (sessionData.crawl) {
         // Update status to crawling
@@ -189,6 +217,8 @@ export class SessionAnalysisManager extends DurableObject {
             setTimeout(() => reject(new Error('Analysis timeout after 5 minutes')), 5 * 60 * 1000);
           });
 
+          this.logExecutionStats(`Starting streaming analysis of ${urlsToAnalyze.length} URLs`);
+
           // Use streaming analysis to update results progressively
           const allResults: any[] = [];
 
@@ -199,6 +229,7 @@ export class SessionAnalysisManager extends DurableObject {
               externalFetcherUrl: env.EXTERNAL_FETCHER,
               concurrency: Math.min(urlsToAnalyze.length, 3),
               onResult: async (result, completedCount, totalCount) => {
+                this.logExecutionStats(`Processing result ${completedCount}/${totalCount}`);
                 console.log(`📊 DO: onResult callback called for session ${sessionId} - ${completedCount}/${totalCount}`);
 
                 // Add result to our tracking array
@@ -246,6 +277,7 @@ export class SessionAnalysisManager extends DurableObject {
             timeoutPromise
           ]) as any[];
 
+          this.logExecutionStats(`Streaming analysis completed with ${allResults.length}/${urlsToAnalyze.length} results`);
           console.log(`✅ DO: Streaming analysis completed for session ${sessionId} with ${allResults.length} results`);
 
           // Complete session with final results
@@ -262,6 +294,7 @@ export class SessionAnalysisManager extends DurableObject {
           });
 
         } catch (error) {
+          this.logExecutionStats(`Analysis failed: ${error instanceof Error ? error.message : String(error)}`);
           console.error(`⚠️ DO: Analysis failed for session ${sessionId}, attempting to get partial results:`, error);
 
           // Try to get any results that may have been completed before the timeout
