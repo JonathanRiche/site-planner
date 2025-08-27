@@ -21,7 +21,7 @@
     "@types/react-dom": "^19.1.6",
     "drizzle-kit": "^0.31.4",
     "vibe-rules": "^0.3.85",
-    "wrangler": "^4.32.0"
+    "wrangler": "^4.33.0"
   },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.16",
