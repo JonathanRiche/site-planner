@@ -24,9 +24,10 @@ export interface SessionData {
   updatedAt: string;
 }
 
-export default async function sessionHandler({ request }: RequestInfo<any, AppContext>) {
+export default async function sessionHandler({ request, params }: RequestInfo<any, AppContext>) {
   const url = new URL(request.url);
   const pathParts = url.pathname.split('/');
+  console.log('Session is:', params);
 
   // Handle different session endpoints
   // GET /api/session/[uuid] - Get session status
@@ -35,6 +36,7 @@ export default async function sessionHandler({ request }: RequestInfo<any, AppCo
 
   if (request.method === 'POST' && pathParts.length === 3) {
     // Create new session
+    //NOTE: THIS IS ALWAY THE ENTRY POINT FOR SESSION ANALYSIS
     return createSession(request);
   }
 
