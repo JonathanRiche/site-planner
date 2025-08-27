@@ -13,10 +13,13 @@ export class SessionAnalysisManager extends DurableObject {
 
   private async externalServiceFetch(url: string) {
     console.log(`External 📡 Fetching ${url}...`);
-    const request = await fetch(`${env.EXTERNAL_FETCHER}/fetch-site?site=${url}`, {
+    const request = await fetch(`${env.EXTERNAL_FETCHER}/api/crawl?url=${url}`, {
       method: 'GET',
-
+      headers: {
+        'X-API-KEY': process.env.EXTERNAL_FETCHER_API_KEY,
+      },
     });
+
     if (request.ok) {
       const html = await request.text();
       console.log("Content ok", request.status, html.length);
@@ -188,7 +191,7 @@ export class SessionAnalysisManager extends DurableObject {
 
           // Use streaming analysis to update results progressively
           const allResults: any[] = [];
-          
+
           await Promise.race([
             analysisService.analyzeMultiplePagesStreaming(urlsToAnalyze, {
               usePuppeteer: sessionData.usePuppeteer,
@@ -198,7 +201,7 @@ export class SessionAnalysisManager extends DurableObject {
               onResult: async (result, completedCount, totalCount) => {
                 // Add result to our tracking array
                 allResults.push(result);
-                
+
                 // Update session with partial results
                 await updateSession({
                   status: 'analyzing',
@@ -212,12 +215,12 @@ export class SessionAnalysisManager extends DurableObject {
                   results: [...allResults], // Include all results so far
                   updatedAt: new Date().toISOString(),
                 });
-                
+
                 console.log(`📊 DO: Updated session ${sessionId} with result ${completedCount}/${totalCount}`);
               },
               onError: async (error, url, completedCount, totalCount) => {
                 console.warn(`⚠️ DO: Failed to analyze ${url} for session ${sessionId}:`, error);
-                
+
                 // Update progress even for errors
                 await updateSession({
                   status: 'analyzing',

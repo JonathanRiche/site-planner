@@ -68,8 +68,11 @@ export class SiteAnalysisService {
     if (!externalFetcherUrl) {
       throw new Error('External fetcher URL not provided');
     }
-    const request = await fetch(`${externalFetcherUrl}/fetch-site?site=${url}`, {
+    const request = await fetch(`${externalFetcherUrl}/api/crawl?url=${url}`, {
       method: 'GET',
+      headers: {
+        'X-API-KEY': process.env.EXTERNAL_FETCHER_API_KEY,
+      },
     });
     if (request.ok) {
       const html = await request.text();
@@ -115,7 +118,7 @@ export class SiteAnalysisService {
       // Step 1: Fetch HTML content
       console.log(`🌐 [${analysisId}] Step 1: Fetching HTML content... external : ${useExternalFetcher} pupputeer : ${usePuppeteer} `);
       let html: string;
-      
+
       if (!usePuppeteer) {
         let tryStatic: string | null = null;
         if (useExternalFetcher && externalFetcherUrl) {
@@ -144,10 +147,10 @@ export class SiteAnalysisService {
 
       // Step 2: Single AI call for complete analysis (like your script)
       console.log(`🤖 [${analysisId}] Step 2: Running single AI analysis...`);
-      
+
       const truncatedHtml = this.truncateHtml(html);
       const lytxInfo = detectLytxInfo(html);
-      
+
       console.log(`📝 [${analysisId}] HTML truncated from ${html.length} to ${truncatedHtml.length} chars`);
       console.log(`🔎 [${analysisId}] LYTX Detection: ${lytxInfo.detected ? 'Found' : 'Not found'}${lytxInfo.accountId ? ` (Account: ${lytxInfo.accountId})` : ''}`);
 
@@ -173,7 +176,7 @@ Focus on conversion-oriented events and provide clear implementation guidance.`,
       });
 
       const totalTime = Date.now() - startTime;
-      
+
       // Add metadata
       const result: SiteAnalysisResult = {
         ...analysisResult.object,
@@ -227,11 +230,11 @@ Focus on conversion-oriented events and provide clear implementation guidance.`,
       try {
         console.log(`📄 [${batchId}] Starting analysis ${index + 1}/${totalCount}: ${url}`);
         const result = await this.analyzeSite(url, usePuppeteer, useExternalFetcher, externalFetcherUrl);
-        
+
         completedCount++;
         results.push(result);
         console.log(`✅ [${batchId}] Completed analysis ${completedCount}/${totalCount}: ${url}`);
-        
+
         // Notify callback with result
         if (onResult) {
           await onResult(result, completedCount, totalCount);
@@ -239,7 +242,7 @@ Focus on conversion-oriented events and provide clear implementation guidance.`,
       } catch (error) {
         completedCount++;
         console.error(`❌ [${batchId}] Failed analysis ${completedCount}/${totalCount}: ${url}:`, error);
-        
+
         // Notify callback with error
         if (onError) {
           await onError(error, url, completedCount, totalCount);
@@ -334,7 +337,7 @@ Focus on conversion-oriented events and provide clear implementation guidance.`,
     try {
       const truncatedHtml = this.truncateHtml(html);
       const lytxInfo = detectLytxInfo(html);
-      
+
       console.log(`📝 [${analysisId}] HTML truncated from ${html.length} to ${truncatedHtml.length} chars`);
       console.log(`🔎 [${analysisId}] LYTX Detection: ${lytxInfo.detected ? 'Found' : 'Not found'}${lytxInfo.accountId ? ` (Account: ${lytxInfo.accountId})` : ''}`);
 
@@ -360,7 +363,7 @@ Focus on conversion-oriented events and provide clear implementation guidance.`,
       });
 
       const totalTime = Date.now() - startTime;
-      
+
       const result: SiteAnalysisResult = {
         ...analysisResult.object,
         analysisId,
