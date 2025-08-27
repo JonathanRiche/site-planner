@@ -232,9 +232,71 @@ export class SessionAnalysisManager implements DurableObject {
   }
 
   private async performCrawling(baseUrl: string, maxPages: number): Promise<string[]> {
-    // This is a placeholder - you'll need to implement the actual crawling logic
-    // For now, just return the base URL
     console.log(`🕷️ Crawling ${baseUrl} with maxPages=${maxPages}`);
-    return [baseUrl];
+
+    try {
+      // Fetch the base page HTML
+      const response = await fetch(baseUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'text/html',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
+        }
+      });
+
+      if (!response.ok) {
+        console.error(`❌ Failed to fetch ${baseUrl}: ${response.status}`);
+        return [baseUrl];
+      }
+
+      const html = await response.text();
+      console.log(`📄 Fetched ${html.length} chars from ${baseUrl}`);
+
+      // Extract internal links
+      const urls = this.extractInternalLinks(html, baseUrl, maxPages);
+
+      // Always include the base URL first
+      const allUrls = [baseUrl, ...urls.filter(url => url !== baseUrl)];
+
+      // Limit to maxPages
+      const limitedUrls = allUrls.slice(0, maxPages);
+
+      console.log(`✅ Found ${limitedUrls.length} URLs: ${limitedUrls.join(', ')}`);
+      return limitedUrls;
+
+    } catch (error) {
+      console.error(`💥 Crawling failed for ${baseUrl}:`, error);
+      return [baseUrl];
+    }
+  }
+
+  private extractInternalLinks(html: string, baseUrl: string, limit: number): string[] {
+    const base = new URL(baseUrl);
+    const hrefs = new Set<string>();
+
+    // Find anchor hrefs
+    const anchorRegex = /<a\s+[^>]*href=["']([^"'#]+)["'][^>]*>/gi;
+    let match: RegExpExecArray | null;
+    while ((match = anchorRegex.exec(html)) && hrefs.size < limit * 2) {
+      const raw = match[1].trim();
+      if (!raw || raw.startsWith('mailto:') || raw.startsWith('tel:') || raw.startsWith('javascript:')) continue;
+
+      try {
+        const url = new URL(raw, base);
+        // Same origin only
+        if (url.origin !== base.origin) continue;
+        // Skip files (images, assets, docs)
+        if (/\.(png|jpg|jpeg|gif|svg|webp|ico|css|js|pdf|zip|rar|7z|mp4|mp3)(\?.*)?$/i.test(url.pathname)) continue;
+
+        // Normalize: drop hash, keep path+search minimally to avoid duplicates
+        url.hash = '';
+        const normalized = url.toString();
+        hrefs.add(normalized);
+      } catch {
+        continue;
+      }
+    }
+
+    return Array.from(hrefs);
   }
 }
