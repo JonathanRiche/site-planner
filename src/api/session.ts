@@ -1,6 +1,8 @@
 import type { AppContext } from "@/worker";
 import type { RequestInfo } from "rwsdk/worker";
 import { env } from 'cloudflare:workers';
+import { DEFAULT_MAX_PAGES } from "@/lib/defaults";
+import { NewSessionRequest } from "@/lib/types";
 
 export interface SessionData {
   id: string;
@@ -9,6 +11,7 @@ export interface SessionData {
   crawl: boolean;
   maxPages: number;
   usePuppeteer: boolean;
+  extraInstructions?: string;
   useExternalFetcher: boolean;
   status: 'pending' | 'crawling' | 'analyzing' | 'completed' | 'error';
   progress: {
@@ -61,8 +64,8 @@ export default async function sessionHandler({ request, params }: RequestInfo<an
 
 async function createSession(request: Request): Promise<Response> {
   try {
-    const body: any = await request.json();
-    const { url: siteUrl, crawl = true, maxPages = 5, usePuppeteer = false, useExternalFetcher = false } = body;
+    const body = await request.json() as NewSessionRequest;
+    const { url: siteUrl, crawl = true, maxPages = 5, usePuppeteer = false, useExternalFetcher = false, extraInstructions } = body;
 
     if (!siteUrl) {
       return new Response(JSON.stringify({ error: 'URL is required' }), {
@@ -80,8 +83,9 @@ async function createSession(request: Request): Promise<Response> {
       url: siteUrl,
       usePuppeteer,
       useExternalFetcher,
+      extraInstructions,
       crawl,
-      maxPages: Math.min(Math.max(maxPages, 1), 20),
+      maxPages: Math.min(Math.max(maxPages, 1), DEFAULT_MAX_PAGES),
       status: 'pending',
       progress: {
         stage: 'idle',

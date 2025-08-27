@@ -3,8 +3,8 @@ import { env } from 'cloudflare:workers';
 import { SiteAnalysisService } from './analysis-service';
 
 import { OptimizedCloudflareBrowserService } from './optimized-browser-service';
-import { SessionData } from "@/api/session";
-
+import type { SessionData } from "@/api/session";
+//NOTE: THIS DO IS JUST LOGGIN AND FETCHING SITE ANALYSIS
 export class SessionAnalysisManager implements DurableObject {
   protected state: DurableObjectState;
   protected env: Env;
@@ -136,7 +136,7 @@ export class SessionAnalysisManager implements DurableObject {
 
         // Perform crawling
         console.log(`🕷️ DO: Starting crawl for session ${sessionId}`);
-        urlsToAnalyze = await this.performCrawling(sessionData.url, sessionData.maxPages);
+        urlsToAnalyze = await this.performCrawling(sessionData);
         console.log(`✅ DO: Crawl completed for session ${sessionId}, found ${urlsToAnalyze.length} URLs`);
 
         // Update session with crawled URLs
@@ -231,12 +231,13 @@ export class SessionAnalysisManager implements DurableObject {
     }
   }
 
-  private async performCrawling(baseUrl: string, maxPages: number): Promise<string[]> {
-    console.log(`🕷️ Crawling ${baseUrl} with maxPages=${maxPages}`);
+  private async performCrawling(sessionData: SessionData): Promise<string[]> {
+    const { url, maxPages } = sessionData;
+    console.log(`🕷️ Crawling ${url} with maxPages=${maxPages}`);
 
     try {
       // Fetch the base page HTML
-      const response = await fetch(baseUrl, {
+      const response = await fetch(url, {
         method: 'GET',
         headers: {
           'Content-Type': 'text/html',
@@ -245,18 +246,18 @@ export class SessionAnalysisManager implements DurableObject {
       });
 
       if (!response.ok) {
-        console.error(`❌ Failed to fetch ${baseUrl}: ${response.status}`);
-        return [baseUrl];
+        console.error(`❌ Failed to fetch ${url}: ${response.status}`);
+        return [url];
       }
 
       const html = await response.text();
-      console.log(`📄 Fetched ${html.length} chars from ${baseUrl}`);
+      console.log(`📄 Fetched ${html.length} chars from ${url}`);
 
       // Extract internal links
-      const urls = this.extractInternalLinks(html, baseUrl, maxPages);
+      const urls = this.extractInternalLinks(html, url, maxPages);
 
       // Always include the base URL first
-      const allUrls = [baseUrl, ...urls.filter(url => url !== baseUrl)];
+      const allUrls = [url, ...urls.filter(url => url !== url)];
 
       // Limit to maxPages
       const limitedUrls = allUrls.slice(0, maxPages);
@@ -265,8 +266,8 @@ export class SessionAnalysisManager implements DurableObject {
       return limitedUrls;
 
     } catch (error) {
-      console.error(`💥 Crawling failed for ${baseUrl}:`, error);
-      return [baseUrl];
+      console.error(`💥 Crawling failed for ${url}:`, error);
+      return [url];
     }
   }
 

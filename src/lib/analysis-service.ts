@@ -37,6 +37,7 @@ function hasLytxScriptTag(html: string): boolean {
   return detectLytxInfo(html).detected;
 }
 
+//NOTE: This is just a class not a cf resource
 export class SiteAnalysisService {
   private browserService: SimpleCloudflareBrowserService;
 

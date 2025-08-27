@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import { createLytxTag, inferDomainFromUrl } from '@vendors/lytx';
+import { DEFAULT_MAX_PAGES } from "@/lib/defaults"
+import { NewSessionRequest } from '@/lib/types';
 
 interface AnalysisResult {
   pageAnalysis: {
@@ -47,6 +49,8 @@ interface AnalysisResult {
   timestamp: string;
 }
 
+
+
 export function HomePage() {
   const [url, setUrl] = useState('');
   const [lytxKey, setLytxKey] = useState('');
@@ -58,6 +62,7 @@ export function HomePage() {
   const [results, setResults] = useState<AnalysisResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
+  const [extraInstructions, setExtraInstructions] = useState<string>('');
   const [progress, setProgress] = useState<
     | { stage: 'idle' }
     | { stage: 'crawling'; url: string; allUrls?: string[]; selectedUrls?: string[] }
@@ -74,17 +79,21 @@ export function HomePage() {
     setError(null);
 
     try {
+      const fetchBody: NewSessionRequest = {
+        url,
+        crawl,
+        maxPages,
+        usePuppeteer,
+        useExternalFetcher,
+        extraInstructions,
+        concurrency: 3 // Use configurable concurrency
+      }
       // Create session and redirect immediately
       const sessionRes = await fetch('/api/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          url,
-          crawl,
-          maxPages,
-          usePuppeteer,
-          useExternalFetcher,
-          concurrency: 3 // Use configurable concurrency
+          fetchBody,
         }),
       });
 
@@ -181,13 +190,27 @@ export function HomePage() {
                   type="number"
                   id="maxPages"
                   min={1}
-                  max={20}
+                  max={DEFAULT_MAX_PAGES}
                   value={maxPages}
-                  onChange={(e) => setMaxPages(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
+                  onChange={(e) => setMaxPages(Math.max(1, Math.min(DEFAULT_MAX_PAGES, Number(e.target.value) || 1)))}
                   className="w-20 px-2 py-1 border border-gray-300 rounded"
                   disabled={loading || !crawl}
                 />
               </div>
+            </div>
+            <div>
+              <label htmlFor="lytxKey" className="block text-sm font-medium text-gray-700 mb-2">
+                Addional Instructions
+              </label>
+              <input
+                type="text"
+                id="extraInstructions"
+                value={extraInstructions}
+                onChange={(e) => setExtraInstructions(e.target.value)}
+                placeholder="Ignore the menu area of the page, and only crawl the main content area."
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                disabled={loading}
+              />
             </div>
             <div>
               <label htmlFor="lytxKey" className="block text-sm font-medium text-gray-700 mb-2">
@@ -203,6 +226,7 @@ export function HomePage() {
                 disabled={loading}
               />
             </div>
+
             <button
               type="submit"
               disabled={loading || !url}

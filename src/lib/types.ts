@@ -1,5 +1,16 @@
 import { z } from 'zod';
 
+export type NewSessionRequest = {
+  url: string;
+  crawl?: boolean;
+  maxPages?: number;
+  usePuppeteer?: boolean;
+  useExternalFetcher?: boolean;
+  extraInstructions?: string;
+  concurrency?: number;
+};
+
+
 export const PageAnalysisSchema = z.object({
   url: z.string(),
   title: z.string(),
