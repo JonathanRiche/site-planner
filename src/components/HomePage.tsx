@@ -92,9 +92,7 @@ export function HomePage() {
       const sessionRes = await fetch('/api/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fetchBody,
-        }),
+        body: JSON.stringify(fetchBody),
       });
 
       if (!sessionRes.ok) {
