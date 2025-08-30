@@ -1,8 +1,5 @@
-import { env } from 'cloudflare:workers';
-
-import { SiteAnalysisService } from './analysis-service';
-
-import { OptimizedCloudflareBrowserService } from './optimized-browser-service';
+import { updateSession } from '@/session/cache';
+import { createErrorResponse, createSuccessResponse, createNotFoundResponse } from '@/utilities';
 import type { SessionData } from "@/api/session";
 //NOTE: THIS DO IS JUST LOGGIN AND FETCHING SITE ANALYSIS
 export class SessionAnalysisManager implements DurableObject {
@@ -41,7 +38,7 @@ export class SessionAnalysisManager implements DurableObject {
       return this.handleStartRequest(request);
     }
 
-    return new Response('Not found', { status: 404 });
+    return createNotFoundResponse();
   }
 
   private async handleStartRequest(request: Request): Promise<Response> {
@@ -58,56 +55,17 @@ export class SessionAnalysisManager implements DurableObject {
       // Start analysis immediately (not in background)
       this.performAnalysis(sessionId, sessionData);
 
-      return new Response(JSON.stringify({
-        success: true,
+      return createSuccessResponse({
         message: "Analysis started"
-      }), {
-        headers: { 'Content-Type': 'application/json' }
       });
     } catch (error) {
-      console.error(`💥 DO: Failed to start analysis:`, error);
-      return new Response(JSON.stringify({
-        success: false,
-        error: error instanceof Error ? error.message : String(error)
-      }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
+      return createErrorResponse(error, {
+        context: 'DO: Failed to start analysis'
       });
     }
   }
 
   private async performAnalysis(sessionId: string, sessionData: SessionData) {
-    const updateSession = async (updates: Partial<SessionData>) => {
-      try {
-        if (!this.env.SITE_ANALYSIS_CACHE) {
-          console.error(`❌ No SITE_ANALYSIS_CACHE available for session ${sessionId}`);
-          return;
-        }
-
-        const currentData = await this.env.SITE_ANALYSIS_CACHE.get(`session:${sessionId}`);
-        if (!currentData) {
-          console.error(`❌ Session ${sessionId} not found in cache`);
-          return;
-        }
-
-        const data = JSON.parse(currentData) as SessionData;
-        const updatedData = {
-          ...data,
-          ...updates,
-          updatedAt: new Date().toISOString()
-        } as SessionData;
-
-        console.log(`📝 DO: Updating session ${sessionId}:`, { status: updatedData.status, stage: updatedData.progress?.stage });
-
-        await this.env.SITE_ANALYSIS_CACHE.put(
-          `session:${sessionId}`,
-          JSON.stringify(updatedData),
-          { expirationTtl: 60 * 60 * 24 * 7 } // 7 days
-        );
-      } catch (error) {
-        console.error(`💥 DO: Failed to update session ${sessionId}:`, error);
-      }
-    };
 
     try {
       this.logExecutionStats(`Starting performAnalysis for session ${sessionId}`);
@@ -124,7 +82,7 @@ export class SessionAnalysisManager implements DurableObject {
 
       if (sessionData.crawl) {
         // Update status to crawling
-        await updateSession({
+        await updateSession(sessionId, {
           status: 'crawling',
           progress: {
             stage: 'crawling',
@@ -140,7 +98,7 @@ export class SessionAnalysisManager implements DurableObject {
         console.log(`✅ DO: Crawl completed for session ${sessionId}, found ${urlsToAnalyze.length} URLs`);
 
         // Update session with crawled URLs
-        await updateSession({
+        await updateSession(sessionId, {
           progress: {
             stage: 'crawling',
             current: urlsToAnalyze.length,
@@ -157,7 +115,7 @@ export class SessionAnalysisManager implements DurableObject {
 
       // Start analysis by spawning individual DOs
       console.log(`🚀 DO: Starting analysis by spawning ${urlsToAnalyze.length} individual DOs for session ${sessionId}`);
-      await updateSession({
+      await updateSession(sessionId, {
         status: 'analyzing',
         progress: {
           stage: 'analyzing',
@@ -223,10 +181,9 @@ export class SessionAnalysisManager implements DurableObject {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error(`💥 DO: Analysis failed for session ${sessionId}:`, errorMessage);
 
-      await updateSession({
+      await updateSession(sessionId, {
         status: 'error',
         error: errorMessage,
-        updatedAt: new Date().toISOString(),
       });
     }
   }
